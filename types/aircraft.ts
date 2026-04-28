@@ -12,3 +12,15 @@ export type DetectedTransaction = {
   proprietario_novo: string;
   operador: string;
 };
+
+export type AircraftDetailField = {
+  label: string;
+  value: string;
+};
+
+export type AircraftRabSnapshot = {
+  marca: string;
+  consulta_realizada_em?: string;
+  fonte_url: string;
+  campos: AircraftDetailField[];
+};
