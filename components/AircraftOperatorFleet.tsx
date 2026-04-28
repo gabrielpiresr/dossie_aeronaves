@@ -13,7 +13,10 @@ export default function AircraftOperatorFleet({ snapshot }: AircraftOperatorFlee
   return (
     <section className="mt-8 w-full rounded-md border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-900">Aeronaves deste operador</h2>
-      <p className="mt-1 text-sm text-slate-600">Operador atual: {snapshot.operador_consolidado.operador_principal}</p>
+      <p className="mt-1 text-sm text-slate-600">
+        Operador atual: {snapshot.operador_consolidado.operador_principal}
+        {snapshot.operador_consolidado.operador_documento ? ` · Documento: ${snapshot.operador_consolidado.operador_documento}` : ''}
+      </p>
       <div className="mt-4">
         <RegisteredAircraftTable
           title="Frota registrada atualmente"

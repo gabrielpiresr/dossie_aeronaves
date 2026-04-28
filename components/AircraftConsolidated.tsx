@@ -122,13 +122,34 @@ function mapDistributionToDonutData(data: DistributionItem[]) {
   return data.slice(0, 10).map((item) => ({ label: item.label, value: item.total }));
 }
 
+function calculateWeightedAverageYear(data: DistributionItem[]) {
+  const validItems = data
+    .map((item) => ({ year: Number(item.label), total: item.total }))
+    .filter((item) => Number.isFinite(item.year) && item.year > 0 && item.total > 0);
+
+  const totalWeight = validItems.reduce((acc, item) => acc + item.total, 0);
+  if (totalWeight === 0) {
+    return 0;
+  }
+
+  const weightedSum = validItems.reduce((acc, item) => acc + item.year * item.total, 0);
+  return weightedSum / totalWeight;
+}
+
 function ManufacturerSection({ snapshot }: { snapshot: AircraftConsolidatedSnapshot }) {
+  const mediaAnoFabricante = calculateWeightedAverageYear(snapshot.fabricante_consolidado.distribuicao_ano);
+
   return (
     <div>
       <h3 className="text-base font-semibold text-slate-900">Consolidado do fabricante: {snapshot.fabricante}</h3>
       <div className="mt-3 grid gap-3 lg:grid-cols-2">
         <DonutChart title="Distribuição por modelo" data={mapDistributionToDonutData(snapshot.fabricante_consolidado.distribuicao_modelo)} centerLabel="Modelos" />
-        <DonutChart title="Distribuição por ano" data={mapDistributionToDonutData(snapshot.fabricante_consolidado.distribuicao_ano)} centerLabel="Anos" />
+        <DonutChart
+          title="Distribuição por ano"
+          data={mapDistributionToDonutData(snapshot.fabricante_consolidado.distribuicao_ano)}
+          centerLabel="Média"
+          centerValue={mediaAnoFabricante}
+        />
       </div>
       <div className="mt-3">
         <BrazilMapChart title="Mapa do Brasil por estado" data={snapshot.fabricante_consolidado.mapa_brasil.por_estado} />
@@ -141,11 +162,18 @@ function ManufacturerSection({ snapshot }: { snapshot: AircraftConsolidatedSnaps
 }
 
 function ModelSection({ snapshot }: { snapshot: AircraftConsolidatedSnapshot }) {
+  const mediaAnoModelo = calculateWeightedAverageYear(snapshot.modelo_consolidado.distribuicao_ano);
+
   return (
     <div>
       <h3 className="text-base font-semibold text-slate-900">Consolidado do modelo: {snapshot.modelo}</h3>
       <div className="mt-3">
-        <DonutChart title="Distribuição por ano" data={mapDistributionToDonutData(snapshot.modelo_consolidado.distribuicao_ano)} centerLabel="Anos" />
+        <DonutChart
+          title="Distribuição por ano"
+          data={mapDistributionToDonutData(snapshot.modelo_consolidado.distribuicao_ano)}
+          centerLabel="Média"
+          centerValue={mediaAnoModelo}
+        />
       </div>
       <div className="mt-3">
         <RegisteredAircraftTable title="Aeronaves do modelo registradas atualmente" rows={snapshot.modelo_consolidado.aeronaves_registradas_detalhes} />
