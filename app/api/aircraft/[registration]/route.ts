@@ -1,10 +1,21 @@
 import { NextResponse } from 'next/server';
-import { extractFieldsFromRabHtml, extractSearchTimestamp } from '@/utils/rabParser';
+import { extractDetailLinksFromSearchHtml, extractFieldsFromRabHtml, extractSearchTimestamp } from '@/utils/rabParser';
 
 const RAB_BASE_URL = 'https://aeronaves.anac.gov.br/aeronaves';
 
 function normalizeRegistration(registration: string) {
-  return registration.trim().toUpperCase();
+  const normalized = registration.trim().toUpperCase().replace(/\s+/g, '').replace(/_/g, '-');
+
+  if (normalized.includes('-')) {
+    return normalized;
+  }
+
+  // Ex.: PULRO -> PU-LRO
+  if (/^[A-Z]{2}[A-Z0-9]{3,4}$/.test(normalized)) {
+    return `${normalized.slice(0, 2)}-${normalized.slice(2)}`;
+  }
+
+  return normalized;
 }
 
 function buildSearchUrl(registration: string) {
@@ -36,9 +47,12 @@ async function fetchPage(url: string) {
     headers: {
       'User-Agent':
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      Accept: 'text/html,application/xhtml+xml',
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+      Referer: `${RAB_BASE_URL}/cons_rab.asp`,
+      Origin: 'https://aeronaves.anac.gov.br',
     },
+    redirect: 'follow',
     cache: 'no-store',
   });
 
@@ -46,7 +60,48 @@ async function fetchPage(url: string) {
     throw new Error(`Falha ao consultar ANAC (HTTP ${response.status}).`);
   }
 
-  return response.text();
+  const buffer = await response.arrayBuffer();
+  const latin1Text = new TextDecoder('latin1').decode(buffer);
+
+  return {
+    html: latin1Text,
+    finalUrl: response.url,
+  };
+}
+
+async function resolveRabDetails(searchUrl: string, directUrl: string) {
+  const visited = new Set<string>();
+  const queue = [searchUrl, directUrl];
+
+  while (queue.length > 0) {
+    const url = queue.shift();
+
+    if (!url || visited.has(url)) {
+      continue;
+    }
+
+    visited.add(url);
+
+    try {
+      const { html, finalUrl } = await fetchPage(url);
+      const fields = extractFieldsFromRabHtml(html);
+
+      if (fields.length > 0) {
+        return { html, sourceUrl: finalUrl };
+      }
+
+      const links = extractDetailLinksFromSearchHtml(html, RAB_BASE_URL);
+      for (const link of links) {
+        if (!visited.has(link)) {
+          queue.push(link);
+        }
+      }
+    } catch {
+      // segue para os próximos candidatos
+    }
+  }
+
+  return null;
 }
 
 export async function GET(_: Request, { params }: { params: Promise<{ registration: string }> }) {
@@ -58,27 +113,12 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
       return NextResponse.json({ error: 'Matrícula inválida.' }, { status: 400 });
     }
 
-    const candidateUrls = [buildSearchUrl(normalizedRegistration), buildDirectUrl(normalizedRegistration)];
+    const searchUrl = buildSearchUrl(normalizedRegistration);
+    const directUrl = buildDirectUrl(normalizedRegistration);
 
-    let selectedHtml = '';
-    let selectedUrl = '';
+    const rabDetails = await resolveRabDetails(searchUrl, directUrl);
 
-    for (const url of candidateUrls) {
-      try {
-        const html = await fetchPage(url);
-        const fields = extractFieldsFromRabHtml(html);
-
-        if (fields.length > 0) {
-          selectedHtml = html;
-          selectedUrl = url;
-          break;
-        }
-      } catch {
-        // tenta próxima variação de endpoint
-      }
-    }
-
-    if (!selectedHtml) {
+    if (!rabDetails) {
       return NextResponse.json(
         {
           error:
@@ -88,12 +128,12 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
       );
     }
 
-    const fields = extractFieldsFromRabHtml(selectedHtml);
+    const fields = extractFieldsFromRabHtml(rabDetails.html);
 
     return NextResponse.json({
       marca: normalizedRegistration,
-      consulta_realizada_em: extractSearchTimestamp(selectedHtml),
-      fonte_url: selectedUrl,
+      consulta_realizada_em: extractSearchTimestamp(rabDetails.html),
+      fonte_url: rabDetails.sourceUrl,
       campos: fields,
     });
   } catch {

@@ -1,7 +1,8 @@
 import type { AircraftDetailField } from '@/types/aircraft';
 
-const FIELD_REGEX = /([A-ZÀ-ÿ0-9()/%.,\-\s]{3,}?):\s*\|\s*([^\n]+)/g;
+const FIELD_REGEX = /([A-ZÀ-ÿ0-9()/%.,\-\s]{3,}?):\s*(?:\|\s*)?([^\n|][^\n]*)/g;
 const SEARCH_DATE_REGEX = /Consulta realizada em:\s*([^\n]+)/i;
+const DETAIL_LINK_REGEX = /href=["']([^"']*cons_rab_resposta\.asp[^"']*)["']/gi;
 
 function decodeHtmlEntities(value: string) {
   return value
@@ -29,7 +30,9 @@ function htmlToText(html: string) {
     .replace(/<\/tr>/gi, '\n')
     .replace(/<\/p>/gi, '\n')
     .replace(/<\/div>/gi, '\n')
-    .replace(/<\/li>/gi, '\n');
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<\/td>/gi, ' | ')
+    .replace(/<\/th>/gi, ' | ');
 
   const rawText = withLineBreaks.replace(/<[^>]+>/g, ' ');
 
@@ -50,7 +53,7 @@ export function extractFieldsFromRabHtml(html: string): AircraftDetailField[] {
     const value = match[2].trim().replace(/\s+/g, ' ');
     const normalizedKey = `${label.toLowerCase()}::${value.toLowerCase()}`;
 
-    if (!label || !value || seen.has(normalizedKey)) {
+    if (!label || !value || value === '|' || seen.has(normalizedKey)) {
       continue;
     }
 
@@ -66,4 +69,21 @@ export function extractSearchTimestamp(html: string) {
   const match = text.match(SEARCH_DATE_REGEX);
 
   return match?.[1]?.trim();
+}
+
+export function extractDetailLinksFromSearchHtml(html: string, baseUrl: string) {
+  const links = new Set<string>();
+
+  for (const match of html.matchAll(DETAIL_LINK_REGEX)) {
+    const href = decodeHtmlEntities(match[1].trim());
+
+    try {
+      const absoluteUrl = new URL(href, `${baseUrl}/`).toString();
+      links.add(absoluteUrl);
+    } catch {
+      // ignora links inválidos
+    }
+  }
+
+  return [...links];
 }
