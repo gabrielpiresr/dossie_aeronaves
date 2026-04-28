@@ -61,10 +61,15 @@ async function fetchPage(url: string) {
   }
 
   const buffer = await response.arrayBuffer();
-  const latin1Text = new TextDecoder('latin1').decode(buffer);
+  const bytes = new Uint8Array(buffer);
+
+  const utf8Text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+  const declaredLatin1 = /charset\s*=\s*(iso-8859-1|latin1)/i.test(response.headers.get('content-type') ?? '') || /<meta[^>]+charset=\s*["']?(iso-8859-1|latin1)/i.test(utf8Text);
+
+  const html = declaredLatin1 ? new TextDecoder('latin1').decode(bytes) : utf8Text;
 
   return {
-    html: latin1Text,
+    html,
     finalUrl: response.url,
   };
 }

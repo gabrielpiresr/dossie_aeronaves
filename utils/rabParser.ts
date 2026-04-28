@@ -1,6 +1,5 @@
 import type { AircraftDetailField } from '@/types/aircraft';
 
-const FIELD_REGEX = /([A-ZÀ-ÿ0-9()/%.,\-\s]{3,}?):\s*(?:\|\s*)?([^\n|][^\n]*)/g;
 const SEARCH_DATE_REGEX = /Consulta realizada em:\s*([^\n]+)/i;
 const DETAIL_LINK_REGEX = /href=["']([^"']*cons_rab_resposta\.asp[^"']*)["']/gi;
 
@@ -19,53 +18,116 @@ function decodeHtmlEntities(value: string) {
     .replace(/&eacute;/gi, 'é')
     .replace(/&iacute;/gi, 'í')
     .replace(/&oacute;/gi, 'ó')
-    .replace(/&uacute;/gi, 'ú');
+    .replace(/&uacute;/gi, 'ú')
+    .replace(/&Atilde;/g, 'Ã')
+    .replace(/&Ccedil;/g, 'Ç');
 }
 
-function htmlToText(html: string) {
+function normalizeWhitespace(value: string) {
+  return decodeHtmlEntities(value).replace(/[\t ]+/g, ' ').replace(/\u00a0/g, ' ').trim();
+}
+
+function htmlToRows(html: string) {
   const withoutScripts = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ');
   const withoutStyles = withoutScripts.replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ');
-  const withLineBreaks = withoutStyles
+
+  const tableText = withoutStyles
     .replace(/<br\s*\/?>/gi, '\n')
-    .replace(/<\/tr>/gi, '\n')
-    .replace(/<\/p>/gi, '\n')
-    .replace(/<\/div>/gi, '\n')
-    .replace(/<\/li>/gi, '\n')
-    .replace(/<\/td>/gi, ' | ')
-    .replace(/<\/th>/gi, ' | ');
+    .replace(/<\/(td|th)>/gi, '\t')
+    .replace(/<\/(tr|p|div|li|h1|h2|h3|h4|h5|h6)>/gi, '\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\r/g, '\n');
 
-  const rawText = withLineBreaks.replace(/<[^>]+>/g, ' ');
+  return tableText
+    .split('\n')
+    .map((line) => line.split('\t').map((cell) => normalizeWhitespace(cell)).filter(Boolean))
+    .filter((cells) => cells.length > 0);
+}
 
-  return decodeHtmlEntities(rawText)
-    .replace(/\r/g, '\n')
-    .replace(/\n\s+\n/g, '\n')
-    .replace(/[\t ]+/g, ' ')
-    .trim();
+function addField(fields: AircraftDetailField[], seen: Set<string>, label: string, value: string) {
+  const normalizedLabel = normalizeWhitespace(label).replace(/:+$/, '');
+  const normalizedValue = normalizeWhitespace(value);
+
+  if (!normalizedLabel || !normalizedValue) {
+    return;
+  }
+
+  const key = `${normalizedLabel.toLowerCase()}::${normalizedValue.toLowerCase()}`;
+  if (seen.has(key)) {
+    return;
+  }
+
+  seen.add(key);
+  fields.push({ label: normalizedLabel, value: normalizedValue });
+}
+
+function extractPairFromSingleCell(cell: string) {
+  const match = cell.match(/^([^:]{3,}?):\s*(.+)$/);
+  if (!match) {
+    return null;
+  }
+
+  return {
+    label: match[1],
+    value: match[2],
+  };
 }
 
 export function extractFieldsFromRabHtml(html: string): AircraftDetailField[] {
-  const text = htmlToText(html);
+  const rows = htmlToRows(html);
   const fields: AircraftDetailField[] = [];
   const seen = new Set<string>();
 
-  for (const match of text.matchAll(FIELD_REGEX)) {
-    const label = match[1].trim().replace(/\s+/g, ' ');
-    const value = match[2].trim().replace(/\s+/g, ' ');
-    const normalizedKey = `${label.toLowerCase()}::${value.toLowerCase()}`;
+  for (let index = 0; index < rows.length; index += 1) {
+    const cells = rows[index];
 
-    if (!label || !value || value === '|' || seen.has(normalizedKey)) {
+    if (cells.length === 1) {
+      const single = extractPairFromSingleCell(cells[0]);
+      if (single) {
+        addField(fields, seen, single.label, single.value);
+      }
+
+      if (index + 1 < rows.length && rows[index + 1].length === 1 && /:$/u.test(cells[0])) {
+        addField(fields, seen, cells[0], rows[index + 1][0]);
+      }
+
       continue;
     }
 
-    seen.add(normalizedKey);
-    fields.push({ label, value });
+    if (cells.length === 2) {
+      addField(fields, seen, cells[0], cells[1]);
+      continue;
+    }
+
+    const isOwnerHeader = cells.some((cell) => /propriet[áa]rio/i.test(cell)) && cells.some((cell) => /cpf\/cnpj/i.test(cell));
+
+    if (isOwnerHeader) {
+      let ownerRowNumber = 1;
+      for (let j = index + 1; j < rows.length; j += 1) {
+        const row = rows[j];
+
+        if (row.length < 2 || /informa[çc][õo]es da aeronave/i.test(row.join(' '))) {
+          break;
+        }
+
+        const pairValues = cells
+          .map((header, headerIndex) => `${header}: ${row[headerIndex] ?? '-'}`)
+          .join(' | ');
+        addField(fields, seen, `Proprietário ${ownerRowNumber}`, pairValues);
+        ownerRowNumber += 1;
+      }
+
+      continue;
+    }
+
+    addField(fields, seen, cells[0], cells.slice(1).join(' | '));
   }
 
   return fields;
 }
 
 export function extractSearchTimestamp(html: string) {
-  const text = htmlToText(html);
+  const text = htmlToRows(html).flat().join('\n');
   const match = text.match(SEARCH_DATE_REGEX);
 
   return match?.[1]?.trim();
