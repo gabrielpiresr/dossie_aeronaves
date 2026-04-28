@@ -5,6 +5,7 @@ import type { AircraftConsolidatedSnapshot, DistributionItem, RegionDistribution
 const DETAIL_TABLE_NAME = process.env.AIRCRAFT_DETAILS_TABLE_NAME ?? 'detailed_aircrafts_info';
 const TRANSACTIONS_TABLE_NAME = process.env.HISTORY_TRANSACTIONS_CACHE_TABLE_NAME ?? 'history_transactions_cache';
 const START_YEAR = 2017;
+const PAGE_SIZE = 1000;
 
 const REGION_BY_STATE: Record<string, string> = {
   AC: 'Norte',
@@ -86,6 +87,31 @@ function resolveSupabaseClient() {
       autoRefreshToken: false,
     },
   });
+}
+
+async function fetchAllPages<T>(queryPage: (from: number, to: number) => Promise<{ data: T[] | null; error: unknown }>) {
+  const rows: T[] = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + PAGE_SIZE - 1;
+    const { data, error } = await queryPage(from, to);
+
+    if (error) {
+      throw new Error('Erro ao consultar páginas de dados.');
+    }
+
+    const pageRows = data ?? [];
+    rows.push(...pageRows);
+
+    if (pageRows.length < PAGE_SIZE) {
+      break;
+    }
+
+    from += PAGE_SIZE;
+  }
+
+  return rows;
 }
 
 function normalizeText(value: string | null) {
@@ -172,6 +198,53 @@ function buildStateAndRegionDistribution(rows: DetailedAircraftRow[]) {
   return { por_estado, por_regiao };
 }
 
+function calculateOwnershipDurationDaysByAircraft(rows: TransactionRow[], now: Date) {
+  const rowsByAircraft = new Map<string, TransactionRow[]>();
+
+  rows.forEach((row) => {
+    const marca = row.marca?.trim();
+    if (!marca) {
+      return;
+    }
+
+    const aircraftRows = rowsByAircraft.get(marca) ?? [];
+    aircraftRows.push(row);
+    rowsByAircraft.set(marca, aircraftRows);
+  });
+
+  let totalDays = 0;
+  let totalIntervals = 0;
+
+  rowsByAircraft.forEach((aircraftRows) => {
+    const sorted = [...aircraftRows]
+      .map((row) => ({
+        ...row,
+        dataNovaParsed: dateFromUnknownFormat(row.data_nova),
+        dataAnteriorParsed: dateFromUnknownFormat(row.data_anterior),
+      }))
+      .filter((row) => row.dataNovaParsed && row.dataAnteriorParsed)
+      .sort((a, b) => (a.dataNovaParsed as Date).getTime() - (b.dataNovaParsed as Date).getTime());
+
+    for (let i = 1; i < sorted.length; i += 1) {
+      const previousDataNova = sorted[i - 1].dataNovaParsed as Date;
+      const currentDataAnterior = sorted[i].dataAnteriorParsed as Date;
+
+      if (currentDataAnterior >= previousDataNova) {
+        totalDays += Math.round((currentDataAnterior.getTime() - previousDataNova.getTime()) / (1000 * 60 * 60 * 24));
+        totalIntervals += 1;
+      }
+    }
+
+    const last = sorted.at(-1);
+    if (last?.dataAnteriorParsed && now >= last.dataAnteriorParsed) {
+      totalDays += Math.round((now.getTime() - last.dataAnteriorParsed.getTime()) / (1000 * 60 * 60 * 24));
+      totalIntervals += 1;
+    }
+  });
+
+  return totalIntervals > 0 ? Number((totalDays / totalIntervals).toFixed(2)) : 0;
+}
+
 function calcTransactionMetrics(rows: TransactionRow[]) {
   const sinceDate = new Date(`${START_YEAR}-01-01T00:00:00Z`);
   const now = new Date();
@@ -180,12 +253,9 @@ function calcTransactionMetrics(rows: TransactionRow[]) {
 
   let totalDesde2017 = 0;
   let ultimos12Meses = 0;
-  let totalDiasPermanencia = 0;
-  let permanenciaComDados = 0;
 
   rows.forEach((row) => {
     const nova = dateFromUnknownFormat(row.data_nova);
-    const anterior = dateFromUnknownFormat(row.data_anterior);
 
     if (nova && nova >= sinceDate) {
       totalDesde2017 += 1;
@@ -193,12 +263,6 @@ function calcTransactionMetrics(rows: TransactionRow[]) {
       if (nova >= twelveMonthsAgo && nova <= now) {
         ultimos12Meses += 1;
       }
-    }
-
-    if (nova && anterior && nova >= anterior) {
-      const diffDays = Math.round((nova.getTime() - anterior.getTime()) / (1000 * 60 * 60 * 24));
-      totalDiasPermanencia += diffDays;
-      permanenciaComDados += 1;
     }
   });
 
@@ -208,14 +272,13 @@ function calcTransactionMetrics(rows: TransactionRow[]) {
     negociacoes_desde_2017: totalDesde2017,
     media_negociacoes_por_ano_desde_2017: Number((totalDesde2017 / anosAnalisados).toFixed(2)),
     negociacoes_ultimos_12_meses: ultimos12Meses,
-    tempo_medio_permanencia_dias:
-      permanenciaComDados > 0 ? Number((totalDiasPermanencia / permanenciaComDados).toFixed(2)) : 0,
+    tempo_medio_permanencia_dias: calculateOwnershipDurationDaysByAircraft(rows, now),
   };
 }
 
 async function fetchTransactionsByMarcas(
   marcas: string[],
-  queryChunk: (chunk: string[]) => Promise<TransactionRow[]>,
+  queryChunk: (chunk: string[], from: number, to: number) => Promise<{ data: TransactionRow[] | null; error: unknown }>,
 ) {
   if (marcas.length === 0) {
     return [] as TransactionRow[];
@@ -226,8 +289,9 @@ async function fetchTransactionsByMarcas(
 
   for (let i = 0; i < marcas.length; i += CHUNK_SIZE) {
     const chunk = marcas.slice(i, i + CHUNK_SIZE);
-    const rows = await queryChunk(chunk);
-    allRows.push(...rows);
+
+    const chunkRows = await fetchAllPages<TransactionRow>((from, to) => queryChunk(chunk, from, to));
+    allRows.push(...chunkRows);
   }
 
   return allRows;
@@ -282,23 +346,33 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
     );
   }
 
-  const [manufacturerRowsResult, modelRowsResult] = await Promise.all([
-    supabase
-      .from(DETAIL_TABLE_NAME)
-      .select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, operadores')
-      .eq('nm_fabricante', fabricante),
-    supabase
-      .from(DETAIL_TABLE_NAME)
-      .select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, operadores')
-      .eq('ds_modelo', modelo),
-  ]);
+  let manufacturerRows: DetailedAircraftRow[] = [];
+  let modelRows: DetailedAircraftRow[] = [];
 
-  if (manufacturerRowsResult.error || modelRowsResult.error) {
+  try {
+    [manufacturerRows, modelRows] = await Promise.all([
+      fetchAllPages<DetailedAircraftRow>(async (from, to) => {
+        const { data, error } = await supabase
+          .from(DETAIL_TABLE_NAME)
+          .select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, operadores')
+          .eq('nm_fabricante', fabricante)
+          .range(from, to);
+
+        return { data: (data as DetailedAircraftRow[] | null) ?? [], error };
+      }),
+      fetchAllPages<DetailedAircraftRow>(async (from, to) => {
+        const { data, error } = await supabase
+          .from(DETAIL_TABLE_NAME)
+          .select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, operadores')
+          .eq('ds_modelo', modelo)
+          .range(from, to);
+
+        return { data: (data as DetailedAircraftRow[] | null) ?? [], error };
+      }),
+    ]);
+  } catch {
     return NextResponse.json({ error: 'Falha ao consultar dados consolidados de fabricante/modelo.' }, { status: 502 });
   }
-
-  const manufacturerRows = (manufacturerRowsResult.data as DetailedAircraftRow[] | null) ?? [];
-  const modelRows = (modelRowsResult.data as DetailedAircraftRow[] | null) ?? [];
 
   const manufacturerMarcas = Array.from(new Set(manufacturerRows.map((row) => row.marcas).filter(Boolean)));
   const modelMarcas = Array.from(new Set(modelRows.map((row) => row.marcas).filter(Boolean)));
@@ -308,29 +382,23 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
 
   try {
     [manufacturerTransactions, modelTransactions] = await Promise.all([
-      fetchTransactionsByMarcas(manufacturerMarcas, async (chunk) => {
+      fetchTransactionsByMarcas(manufacturerMarcas, async (chunk, from, to) => {
         const { data, error } = await supabase
           .from(TRANSACTIONS_TABLE_NAME)
           .select('marca, data_anterior, data_nova')
-          .in('marca', chunk);
+          .in('marca', chunk)
+          .range(from, to);
 
-        if (error) {
-          throw new Error('Erro ao consultar transações por marca.');
-        }
-
-        return (data as TransactionRow[] | null) ?? [];
+        return { data: (data as TransactionRow[] | null) ?? [], error };
       }),
-      fetchTransactionsByMarcas(modelMarcas, async (chunk) => {
+      fetchTransactionsByMarcas(modelMarcas, async (chunk, from, to) => {
         const { data, error } = await supabase
           .from(TRANSACTIONS_TABLE_NAME)
           .select('marca, data_anterior, data_nova')
-          .in('marca', chunk);
+          .in('marca', chunk)
+          .range(from, to);
 
-        if (error) {
-          throw new Error('Erro ao consultar transações por marca.');
-        }
-
-        return (data as TransactionRow[] | null) ?? [];
+        return { data: (data as TransactionRow[] | null) ?? [], error };
       }),
     ]);
   } catch {
