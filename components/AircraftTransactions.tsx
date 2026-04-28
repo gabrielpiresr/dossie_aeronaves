@@ -3,6 +3,7 @@ import type { DetectedTransaction } from '@/types/aircraft';
 
 type AircraftTransactionsProps = {
   transactions: DetectedTransaction[];
+  isLoading?: boolean;
 };
 
 function sortByMostRecent(transactions: DetectedTransaction[]) {
@@ -14,14 +15,16 @@ function sortByMostRecent(transactions: DetectedTransaction[]) {
   });
 }
 
-export default function AircraftTransactions({ transactions }: AircraftTransactionsProps) {
+export default function AircraftTransactions({ transactions, isLoading = false }: AircraftTransactionsProps) {
   const sortedTransactions = useMemo(() => sortByMostRecent(transactions), [transactions]);
 
   return (
     <section className="mt-8 w-full rounded-md border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-900">Timeline de Negociações</h2>
 
-      {sortedTransactions.length === 0 ? (
+      {isLoading ? (
+        <p className="mt-4 text-sm text-slate-600">Carregando negociações...</p>
+      ) : sortedTransactions.length === 0 ? (
         <p className="mt-4 text-sm text-slate-600">Nenhuma negociação detectada.</p>
       ) : (
         <ul className="mt-6 space-y-6">

@@ -90,21 +90,44 @@ function IncidentSummarySection({ title, metrics }: { title: string; metrics: Co
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
         <div className="rounded-md border border-slate-200 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Relato por UF</p>
-          <ul className="mt-2 space-y-1 text-sm text-slate-700">
-            {metrics.ocorrencias.relato_por_uf.slice(0, 10).map((item) => (
-              <li key={item.estado}>{item.estado}: <strong>{formatNumber(item.total)}</strong></li>
-            ))}
-          </ul>
+          <VerticalBarChart
+            data={metrics.ocorrencias.relato_por_uf.slice(0, 10).map((item) => ({ label: item.estado, total: item.total }))}
+          />
         </div>
 
         <div className="rounded-md border border-slate-200 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Relato por tipo</p>
-          <ul className="mt-2 space-y-1 text-sm text-slate-700">
-            {metrics.ocorrencias.relato_por_tipo.slice(0, 10).map((item) => (
-              <li key={item.label}>{item.label}: <strong>{formatNumber(item.total)}</strong></li>
-            ))}
-          </ul>
+          <VerticalBarChart data={metrics.ocorrencias.relato_por_tipo.slice(0, 10)} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function VerticalBarChart({ data }: { data: DistributionItem[] }) {
+  if (data.length === 0) {
+    return <p className="mt-2 text-xs text-slate-500">Sem dados.</p>;
+  }
+
+  const max = Math.max(...data.map((item) => item.total), 0);
+
+  return (
+    <div className="mt-3">
+      <div className="flex h-44 items-end gap-2 rounded-md border border-slate-100 bg-slate-50 px-2 py-3">
+        {data.map((item, index) => {
+          const height = max > 0 ? Math.max((item.total / max) * 100, 6) : 6;
+          return (
+            <div key={item.label} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1">
+              <span className="text-[10px] font-semibold text-slate-700">{formatNumber(item.total)}</span>
+              <div
+                className="w-full rounded-t-sm"
+                style={{ height: `${height}%`, backgroundColor: COLORS[index % COLORS.length] }}
+                title={`${item.label}: ${formatNumber(item.total)}`}
+              />
+              <span className="line-clamp-2 text-center text-[10px] text-slate-600">{item.label}</span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -230,9 +253,9 @@ function ModelSection({ snapshot }: { snapshot: AircraftConsolidatedSnapshot }) 
       <h3 className="text-base font-semibold text-slate-900">Consolidado do modelo: {snapshot.modelo}</h3>
       <div className="mt-3"><DonutChart title="Distribuição por ano" data={snapshot.modelo_consolidado.distribuicao_ano} /></div>
       <div className="mt-3"><RegisteredAircraftTable rows={snapshot.modelo_consolidado.aeronaves_registradas_detalhes} /></div>
-      <div className="mt-3"><ModelAccidentTable rows={snapshot.ocorrencias_detalhes_modelo} /></div>
       <div className="mt-3"><BrazilMapInfographic metrics={snapshot.modelo_consolidado} /></div>
       <div className="mt-3"><IncidentSummarySection title="Ocorrências consolidadas por modelo" metrics={snapshot.modelo_consolidado} /></div>
+      <div className="mt-3"><ModelAccidentTable rows={snapshot.ocorrencias_detalhes_modelo} /></div>
     </div>
   );
 }
