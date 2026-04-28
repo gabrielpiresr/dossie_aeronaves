@@ -12,7 +12,9 @@
     "@supabase/supabase-js": "^2.49.10",
     "next": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "echarts": "^5.6.0",
+    "echarts-for-react": "^3.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.14.1",
