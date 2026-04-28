@@ -49,8 +49,27 @@ export default function BarChart({ categories, series, height = 320, horizontal 
       borderWidth: 1,
       textStyle: { color: '#e2e8f0', fontSize: 12 },
       formatter: (params) => {
-        const rows = (Array.isArray(params) ? params : [params]) as Array<{ marker: string; seriesName: string; value: number; axisValue: string }>;
-        const header = rows[0]?.axisValue ?? '';
+        const rows = (Array.isArray(params) ? params : [params]).map((item) => {
+          const row = item as {
+            marker?: string;
+            seriesName?: string;
+            value?: number | number[];
+            axisValueLabel?: string;
+            axisValue?: string | number;
+            name?: string;
+          };
+
+          const rawValue = Array.isArray(row.value) ? row.value.at(-1) : row.value;
+
+          return {
+            marker: row.marker ?? '',
+            seriesName: row.seriesName ?? 'Valor',
+            value: typeof rawValue === 'number' ? rawValue : 0,
+            axisLabel: row.axisValueLabel ?? String(row.axisValue ?? row.name ?? ''),
+          };
+        });
+
+        const header = rows[0]?.axisLabel ?? '';
         const body = rows.map((item) => `${item.marker}${item.seriesName}: <strong>${formatNumber(item.value)}</strong>`).join('<br/>');
         return `${header}<br/>${body}`;
       },
