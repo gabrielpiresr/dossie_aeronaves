@@ -1,18 +1,24 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { AircraftConsolidatedSnapshot, ConsolidatedMetrics, DistributionItem, IncidentCount, IncidentDetail, RegisteredAircraftRow } from '@/types/aircraft';
+import type {
+  AircraftConsolidatedSnapshot,
+  ConsolidatedMetrics,
+  DistributionItem,
+  IncidentCount,
+  RegisteredAircraftRow,
+  SearchMode,
+} from '@/types/aircraft';
 
 type AircraftConsolidatedProps = {
   snapshot: AircraftConsolidatedSnapshot | null;
+  viewMode: SearchMode;
 };
 
 type SortDir = 'asc' | 'desc';
-
 type BrazilTile = { estado: string; top: number; left: number };
 
 const COLORS = ['#0f766e', '#0284c7', '#7c3aed', '#ea580c', '#16a34a', '#be123c', '#334155', '#ca8a04'];
-
 const BRAZIL_TILE_MAP: BrazilTile[] = [
   { estado: 'RR', top: 4, left: 29 }, { estado: 'AP', top: 9, left: 49 }, { estado: 'AM', top: 15, left: 23 }, { estado: 'PA', top: 18, left: 44 },
   { estado: 'AC', top: 25, left: 7 }, { estado: 'RO', top: 28, left: 17 }, { estado: 'TO', top: 34, left: 47 }, { estado: 'MA', top: 32, left: 58 },
@@ -66,33 +72,74 @@ function DonutChart({ title, data }: { title: string; data: DistributionItem[] }
   );
 }
 
-function SortableTable<T extends Record<string, unknown>>({ title, rows, columns }: { title: string; rows: T[]; columns: Array<{ key: keyof T; label: string }> }) {
-  const [sortBy, setSortBy] = useState<keyof T>(columns[0].key);
+function IncidentSummarySection({ title, metrics }: { title: string; metrics: ConsolidatedMetrics }) {
+  const counts = metrics.ocorrencias.totais_por_classificacao.filter((item) => item.classificacao !== 'INCIDENTE');
+
+  return (
+    <div className="rounded-md border border-slate-200 p-4">
+      <h4 className="text-sm font-semibold text-slate-800">{title}</h4>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        {counts.map((item: IncidentCount) => (
+          <article key={item.classificacao} className="rounded-md border border-slate-200 p-3">
+            <p className="text-xs text-slate-500">{item.classificacao}</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">{formatNumber(item.total)}</p>
+          </article>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-2">
+        <div className="rounded-md border border-slate-200 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Relato por UF</p>
+          <ul className="mt-2 space-y-1 text-sm text-slate-700">
+            {metrics.ocorrencias.relato_por_uf.slice(0, 10).map((item) => (
+              <li key={item.estado}>{item.estado}: <strong>{formatNumber(item.total)}</strong></li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="rounded-md border border-slate-200 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Relato por tipo</p>
+          <ul className="mt-2 space-y-1 text-sm text-slate-700">
+            {metrics.ocorrencias.relato_por_tipo.slice(0, 10).map((item) => (
+              <li key={item.label}>{item.label}: <strong>{formatNumber(item.total)}</strong></li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RegisteredAircraftTable({ rows }: { rows: RegisteredAircraftRow[] }) {
+  const [sortBy, setSortBy] = useState<keyof RegisteredAircraftRow>('marca');
   const [dir, setDir] = useState<SortDir>('asc');
   const [filter, setFilter] = useState('');
+
+  const columns: Array<{ key: keyof RegisteredAircraftRow; label: string }> = [
+    { key: 'marca', label: 'Matrícula' }, { key: 'fabricante', label: 'Fabricante' }, { key: 'modelo', label: 'Modelo' }, { key: 'ano_fabricacao', label: 'Ano' },
+    { key: 'tipo_icao', label: 'Tipo ICAO' }, { key: 'categoria', label: 'Categoria' }, { key: 'tipo_motor', label: 'Motor' }, { key: 'quantidade_motores', label: 'Qt Motores' }, { key: 'estado_operacao', label: 'UF' },
+  ];
 
   const filteredRows = useMemo(() => {
     const base = rows.filter((row) => JSON.stringify(row).toLowerCase().includes(filter.toLowerCase()));
     return [...base].sort((a, b) => {
-      const av = String(a[sortBy] ?? '');
-      const bv = String(b[sortBy] ?? '');
-      const result = av.localeCompare(bv, 'pt-BR', { numeric: true });
+      const result = String(a[sortBy]).localeCompare(String(b[sortBy]), 'pt-BR', { numeric: true });
       return dir === 'asc' ? result : -result;
     });
   }, [rows, filter, sortBy, dir]);
 
   return (
     <div className="rounded-md border border-slate-200 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-semibold text-slate-800">{title}</p>
-        <input className="rounded border border-slate-300 px-2 py-1 text-xs" placeholder="Filtrar..." value={filter} onChange={(event) => setFilter(event.target.value)} />
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-slate-800">Aeronaves do modelo registradas atualmente</p>
+        <input className="rounded border border-slate-300 px-2 py-1 text-xs" placeholder="Filtrar..." value={filter} onChange={(e) => setFilter(e.target.value)} />
       </div>
       <div className="mt-3 max-h-80 overflow-auto">
         <table className="min-w-full text-left text-xs text-slate-700">
           <thead className="bg-slate-100">
             <tr>
               {columns.map((column) => (
-                <th key={String(column.key)} className="cursor-pointer px-3 py-2" onClick={() => {
+                <th key={column.key} className="cursor-pointer px-3 py-2" onClick={() => {
                   if (sortBy === column.key) setDir(dir === 'asc' ? 'desc' : 'asc');
                   else {
                     setSortBy(column.key);
@@ -103,10 +150,42 @@ function SortableTable<T extends Record<string, unknown>>({ title, rows, columns
             </tr>
           </thead>
           <tbody>
-            {filteredRows.map((row, index) => (
-              <tr key={index} className="border-t border-slate-100">
-                {columns.map((column) => <td key={String(column.key)} className="px-3 py-2">{String(row[column.key] ?? '-')}</td>)}
+            {filteredRows.map((row) => (
+              <tr key={`${row.marca}-${row.modelo}`} className="border-t border-slate-100">
+                <td className="px-3 py-2"><a className="text-sky-700 underline" href={`/?mode=matricula&term=${encodeURIComponent(row.marca)}`} target="_blank" rel="noreferrer">{row.marca}</a></td>
+                <td className="px-3 py-2">{row.fabricante}</td>
+                <td className="px-3 py-2">{row.modelo}</td>
+                <td className="px-3 py-2">{row.ano_fabricacao}</td>
+                <td className="px-3 py-2">{row.tipo_icao}</td>
+                <td className="px-3 py-2">{row.categoria}</td>
+                <td className="px-3 py-2">{row.tipo_motor}</td>
+                <td className="px-3 py-2">{row.quantidade_motores}</td>
+                <td className="px-3 py-2">{row.estado_operacao}</td>
               </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ModelAccidentTable({ rows }: { rows: AircraftConsolidatedSnapshot['ocorrencias_detalhes_modelo'] }) {
+  const [filter, setFilter] = useState('');
+  const filtered = rows.filter((row) => row.classificacao?.toUpperCase() !== 'INCIDENTE').filter((row) => JSON.stringify(row).toLowerCase().includes(filter.toLowerCase()));
+
+  return (
+    <div className="rounded-md border border-slate-200 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-slate-800">Acidentes reportados do modelo</p>
+        <input className="rounded border border-slate-300 px-2 py-1 text-xs" placeholder="Filtrar..." value={filter} onChange={(e) => setFilter(e.target.value)} />
+      </div>
+      <div className="mt-3 max-h-80 overflow-auto">
+        <table className="min-w-full text-left text-xs text-slate-700">
+          <thead className="bg-slate-100"><tr><th className="px-3 py-2">Data</th><th className="px-3 py-2">Matrícula</th><th className="px-3 py-2">Classificação</th><th className="px-3 py-2">Tipo</th><th className="px-3 py-2">Localidade</th><th className="px-3 py-2">UF</th><th className="px-3 py-2">Aeródromo</th><th className="px-3 py-2">Operação</th><th className="px-3 py-2">Status</th></tr></thead>
+          <tbody>
+            {filtered.map((row, index) => (
+              <tr key={`${row.marca}-${index}`} className="border-t border-slate-100"><td className="px-3 py-2">{row.data || '-'}</td><td className="px-3 py-2">{row.marca || '-'}</td><td className="px-3 py-2">{row.classificacao || '-'}</td><td className="px-3 py-2">{row.tipo || '-'}</td><td className="px-3 py-2">{row.localidade || '-'}</td><td className="px-3 py-2">{row.uf || '-'}</td><td className="px-3 py-2">{row.aerodromo || '-'}</td><td className="px-3 py-2">{row.operacao || '-'}</td><td className="px-3 py-2">{row.status || '-'}</td></tr>
             ))}
           </tbody>
         </table>
@@ -122,21 +201,11 @@ function BrazilMapInfographic({ metrics }: { metrics: ConsolidatedMetrics }) {
   return (
     <div className="rounded-md border border-slate-200 p-4">
       <h4 className="text-sm font-semibold text-slate-800">Mapa do Brasil por estado</h4>
-      <p className="mt-1 text-xs text-slate-500">Heatmap melhorado com legenda e intensidade por estado.</p>
       <div className="mt-3 rounded-md border border-slate-100 bg-slate-50 p-3">
         <div className="relative mx-auto h-80 w-full max-w-xs rounded-md bg-white">
           {BRAZIL_TILE_MAP.map((tile) => {
             const total = stateMap.get(tile.estado) ?? 0;
-            return (
-              <div
-                key={tile.estado}
-                className="absolute flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded text-[10px] font-semibold text-slate-800"
-                style={{ top: `${tile.top}%`, left: `${tile.left}%`, backgroundColor: heatColor(total, maxValue) }}
-                title={`${tile.estado}: ${formatNumber(total)} aeronaves`}
-              >
-                {tile.estado}
-              </div>
-            );
+            return <div key={tile.estado} className="absolute flex h-8 w-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded text-[10px] font-semibold text-slate-800" style={{ top: `${tile.top}%`, left: `${tile.left}%`, backgroundColor: heatColor(total, maxValue) }} title={`${tile.estado}: ${formatNumber(total)}`}>{tile.estado}</div>;
           })}
         </div>
       </div>
@@ -144,60 +213,39 @@ function BrazilMapInfographic({ metrics }: { metrics: ConsolidatedMetrics }) {
   );
 }
 
-function IncidentCountCards({ counts }: { counts: IncidentCount[] }) {
-  const filtered = counts.filter((item) => item.classificacao !== 'INCIDENTE');
+function ManufacturerSection({ snapshot }: { snapshot: AircraftConsolidatedSnapshot }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {filtered.map((item) => (
-        <article key={item.classificacao} className="rounded-md border border-slate-200 p-3">
-          <p className="text-xs text-slate-500">{item.classificacao}</p>
-          <p className="mt-1 text-2xl font-semibold text-slate-900">{formatNumber(item.total)}</p>
-        </article>
-      ))}
+    <div>
+      <h3 className="text-base font-semibold text-slate-900">Consolidado do fabricante: {snapshot.fabricante}</h3>
+      <div className="mt-3 grid gap-3 lg:grid-cols-2"><DonutChart title="Distribuição por modelo" data={snapshot.fabricante_consolidado.distribuicao_modelo} /><DonutChart title="Distribuição por ano" data={snapshot.fabricante_consolidado.distribuicao_ano} /></div>
+      <div className="mt-3"><BrazilMapInfographic metrics={snapshot.fabricante_consolidado} /></div>
+      <div className="mt-3"><IncidentSummarySection title="Ocorrências consolidadas por fabricante" metrics={snapshot.fabricante_consolidado} /></div>
     </div>
   );
 }
 
-export default function AircraftConsolidated({ snapshot }: AircraftConsolidatedProps) {
+function ModelSection({ snapshot }: { snapshot: AircraftConsolidatedSnapshot }) {
+  return (
+    <div>
+      <h3 className="text-base font-semibold text-slate-900">Consolidado do modelo: {snapshot.modelo}</h3>
+      <div className="mt-3"><DonutChart title="Distribuição por ano" data={snapshot.modelo_consolidado.distribuicao_ano} /></div>
+      <div className="mt-3"><RegisteredAircraftTable rows={snapshot.modelo_consolidado.aeronaves_registradas_detalhes} /></div>
+      <div className="mt-3"><ModelAccidentTable rows={snapshot.ocorrencias_detalhes_modelo} /></div>
+      <div className="mt-3"><BrazilMapInfographic metrics={snapshot.modelo_consolidado} /></div>
+      <div className="mt-3"><IncidentSummarySection title="Ocorrências consolidadas por modelo" metrics={snapshot.modelo_consolidado} /></div>
+    </div>
+  );
+}
+
+export default function AircraftConsolidated({ snapshot, viewMode }: AircraftConsolidatedProps) {
   if (!snapshot) return null;
-
-  const registeredColumns: Array<{ key: keyof RegisteredAircraftRow; label: string }> = [
-    { key: 'marca', label: 'Matrícula' }, { key: 'fabricante', label: 'Fabricante' }, { key: 'modelo', label: 'Modelo' }, { key: 'ano_fabricacao', label: 'Ano' },
-    { key: 'tipo_icao', label: 'Tipo ICAO' }, { key: 'categoria', label: 'Categoria' }, { key: 'tipo_motor', label: 'Motor' }, { key: 'quantidade_motores', label: 'Qt Motores' }, { key: 'estado_operacao', label: 'UF' },
-  ];
-
-  const incidentColumns: Array<{ key: keyof IncidentDetail; label: string }> = [
-    { key: 'data', label: 'Data' }, { key: 'marca', label: 'Matrícula' }, { key: 'classificacao', label: 'Classificação' }, { key: 'tipo', label: 'Tipo' },
-    { key: 'localidade', label: 'Localidade' }, { key: 'uf', label: 'UF' }, { key: 'aerodromo', label: 'Aeródromo' }, { key: 'operacao', label: 'Operação' }, { key: 'status', label: 'Status' },
-  ];
 
   return (
     <section className="mt-8 w-full rounded-md border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="text-lg font-semibold text-slate-900">Consolidado de Fabricante e Modelo</h2>
+      <h2 className="text-lg font-semibold text-slate-900">Consolidado</h2>
       <div className="mt-4 space-y-6">
-        <div className="rounded-md border border-slate-200 p-4">
-          <h3 className="text-base font-semibold text-slate-900">Ocorrências da aeronave consultada</h3>
-          <div className={`mt-3 rounded-md border px-3 py-2 text-sm font-semibold ${snapshot.aeronave_consultada_ocorrencias.possui_historico ? 'border-amber-700 bg-amber-800/90 text-amber-50' : 'border-green-200 bg-green-50 text-green-800'}`}>
-            {snapshot.aeronave_consultada_ocorrencias.possui_historico ? 'AERONAVE COM HISTÓRICO DE ACIDENTE' : 'AERONAVE SEM HISTÓRICO DE ACIDENTE'}
-          </div>
-          <div className="mt-3"><IncidentCountCards counts={snapshot.aeronave_consultada_ocorrencias.totais_por_classificacao} /></div>
-        </div>
-
-        <div>
-          <h3 className="text-base font-semibold text-slate-900">Fabricante: {snapshot.fabricante}</h3>
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
-            <DonutChart title="Distribuição por modelo" data={snapshot.fabricante_consolidado.distribuicao_modelo} />
-            <DonutChart title="Distribuição por ano" data={snapshot.fabricante_consolidado.distribuicao_ano} />
-          </div>
-          <div className="mt-3"><BrazilMapInfographic metrics={snapshot.fabricante_consolidado} /></div>
-        </div>
-
-        <div className="border-t border-slate-200 pt-5">
-          <h3 className="text-base font-semibold text-slate-900">Modelo: {snapshot.modelo}</h3>
-          <div className="mt-3"><SortableTable title="Aeronaves do modelo registradas atualmente" rows={snapshot.modelo_consolidado.aeronaves_registradas_detalhes} columns={registeredColumns} /></div>
-          <div className="mt-3"><SortableTable title="Acidentes reportados do modelo" rows={snapshot.ocorrencias_detalhes_modelo.filter((item) => item.classificacao?.toUpperCase() !== 'INCIDENTE')} columns={incidentColumns} /></div>
-          <div className="mt-3"><BrazilMapInfographic metrics={snapshot.modelo_consolidado} /></div>
-        </div>
+        {(viewMode === 'matricula' || viewMode === 'fabricante') && <ManufacturerSection snapshot={snapshot} />}
+        {(viewMode === 'matricula' || viewMode === 'modelo') && <ModelSection snapshot={snapshot} />}
       </div>
     </section>
   );
