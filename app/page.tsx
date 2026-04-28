@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Image from 'next/image';
 import AircraftConsolidated from '@/components/AircraftConsolidated';
 import AircraftCurrentAircraftOccurrences from '@/components/AircraftCurrentAircraftOccurrences';
 import AircraftRabDetails from '@/components/AircraftRabDetails';
@@ -142,8 +143,24 @@ export default function HomePage() {
           <AircraftRabDetails snapshot={aircraftSnapshot} />
           <AircraftCurrentAircraftOccurrences snapshot={consolidatedSnapshot} />
           <AircraftConsolidated snapshot={consolidatedSnapshot} viewMode={searchMode} />
-          <AircraftTransactions transactions={transactions} />
+          <AircraftTransactions transactions={transactions} isLoading={isLoading} />
         </>
+      )}
+
+      {isLoading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-[1px]">
+          <div className="flex flex-col items-center gap-3 rounded-lg bg-white/95 px-8 py-6 shadow-xl">
+            <Image
+              src="https://media.tenor.com/On7kvXhzml4AAAAj/loading-gif.gif"
+              alt="Carregando"
+              className="h-16 w-16"
+              width={64}
+              height={64}
+              unoptimized
+            />
+            <p className="text-sm font-medium text-slate-700">Carregando dados...</p>
+          </div>
+        </div>
       )}
     </main>
   );
