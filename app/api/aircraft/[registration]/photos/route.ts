@@ -36,6 +36,10 @@ type JetPhotosAttemptResult = {
   photos: string[];
 };
 
+function buildFetchCandidates(url: string) {
+  return [url, `https://r.jina.ai/http://${url.replace(/^https?:\/\//, '')}`];
+}
+
 async function fetchJetPhotosPage(url: string): Promise<JetPhotosAttemptResult> {
   try {
     const response = await fetch(url, {
@@ -82,21 +86,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ regi
   console.info(`[jetphotos] lookup start registration=${normalizedRegistration} model=${modelParam || '-'}`);
 
   for (const registrationUrl of registrationUrls) {
-    const attempt = await fetchJetPhotosPage(registrationUrl);
-
-    if (attempt.photos.length > 0) {
-      return NextResponse.json({
-        registration: normalizedRegistration,
-        searchedModel: null,
-        source: 'registration',
-        warning: null,
-        sourceUrl: registrationUrl,
-        credits: 'Fotos: JetPhotos.com',
-        photos: attempt.photos,
-      });
+    let attempt: JetPhotosAttemptResult = { status: null, photos: [] };
+    for (const candidateUrl of buildFetchCandidates(registrationUrl)) {
+      attempt = await fetchJetPhotosPage(candidateUrl);
+      if (attempt.photos.length > 0) {
+        return NextResponse.json({
+          registration: normalizedRegistration,
+          searchedModel: null,
+          source: 'registration',
+          warning: null,
+          sourceUrl: registrationUrl,
+          credits: 'Fotos: JetPhotos.com',
+          photos: attempt.photos,
+        });
+      }
     }
 
-    console.info(`[jetphotos] registration attempt done url=${registrationUrl} status=${attempt.status} photos=${attempt.photos.length}`);
+    console.info(
+      `[jetphotos] registration attempt done url=${registrationUrl} status=${attempt.status} photos=${attempt.photos.length}`,
+    );
   }
 
   if (!modelParam) {
@@ -117,18 +125,21 @@ export async function GET(request: Request, { params }: { params: Promise<{ regi
   ];
 
   for (const modelUrl of modelUrls) {
-    const attempt = await fetchJetPhotosPage(modelUrl);
+    let attempt: JetPhotosAttemptResult = { status: null, photos: [] };
+    for (const candidateUrl of buildFetchCandidates(modelUrl)) {
+      attempt = await fetchJetPhotosPage(candidateUrl);
 
-    if (attempt.photos.length > 0) {
-      return NextResponse.json({
-        registration: normalizedRegistration,
-        searchedModel: modelParam,
-        source: 'model',
-        warning: 'nao encontrado fotos dessa aeronave, mostrando similares',
-        sourceUrl: modelUrl,
-        credits: 'Fotos: JetPhotos.com',
-        photos: attempt.photos,
-      });
+      if (attempt.photos.length > 0) {
+        return NextResponse.json({
+          registration: normalizedRegistration,
+          searchedModel: modelParam,
+          source: 'model',
+          warning: 'nao encontrado fotos dessa aeronave, mostrando similares',
+          sourceUrl: modelUrl,
+          credits: 'Fotos: JetPhotos.com',
+          photos: attempt.photos,
+        });
+      }
     }
 
     console.info(`[jetphotos] model attempt done url=${modelUrl} status=${attempt.status} photos=${attempt.photos.length}`);
