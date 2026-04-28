@@ -1,11 +1,21 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import type { AircraftConsolidatedSnapshot, DistributionItem, RegionDistributionItem, StateDistributionItem } from '@/types/aircraft';
+import type {
+  AircraftConsolidatedSnapshot,
+  DistributionItem,
+  IncidentClassificacao,
+  IncidentCount,
+  IncidentDetail,
+  RegionDistributionItem,
+  StateDistributionItem,
+} from '@/types/aircraft';
 
 const DETAIL_TABLE_NAME = process.env.AIRCRAFT_DETAILS_TABLE_NAME ?? 'detailed_aircrafts_info';
 const TRANSACTIONS_TABLE_NAME = process.env.HISTORY_TRANSACTIONS_CACHE_TABLE_NAME ?? 'history_transactions_cache';
+const INCIDENTS_TABLE_NAME = process.env.AIRCRAFT_INCIDENTS_TABLE_NAME ?? 'aicraft_incidents';
 const START_YEAR = 2017;
 const PAGE_SIZE = 1000;
+const INCIDENT_CLASSIFICATIONS: IncidentClassificacao[] = ['ACIDENTE', 'INCIDENTE', 'INCIDENTE GRAVE'];
 
 const REGION_BY_STATE: Record<string, string> = {
   AC: 'Norte',
@@ -50,6 +60,8 @@ type TransactionRow = {
   data_anterior: string;
   data_nova: string;
 };
+
+type IncidentRow = IncidentDetail;
 
 function normalizeRegistration(registration: string) {
   const normalized = registration.trim().toUpperCase().replace(/\s+/g, '').replace(/_/g, '-');
@@ -169,6 +181,54 @@ function buildDistribution(items: string[]): DistributionItem[] {
   return Array.from(counters.entries())
     .map(([label, total]) => ({ label, total }))
     .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+}
+
+function normalizeIncidentClassification(value: string | null) {
+  const normalized = (value ?? '').trim().toUpperCase();
+  if (normalized === 'ACIDENTE' || normalized === 'INCIDENTE' || normalized === 'INCIDENTE GRAVE') {
+    return normalized as IncidentClassificacao;
+  }
+
+  return null;
+}
+
+function buildIncidentCounts(rows: IncidentRow[]): IncidentCount[] {
+  const counters = new Map<IncidentClassificacao, number>(INCIDENT_CLASSIFICATIONS.map((item) => [item, 0]));
+
+  rows.forEach((row) => {
+    const classification = normalizeIncidentClassification(row.classificacao);
+    if (!classification) {
+      return;
+    }
+
+    counters.set(classification, (counters.get(classification) ?? 0) + 1);
+  });
+
+  return INCIDENT_CLASSIFICATIONS.map((classificacao) => ({
+    classificacao,
+    total: counters.get(classificacao) ?? 0,
+  }));
+}
+
+function buildIncidentStateDistribution(rows: IncidentRow[]): StateDistributionItem[] {
+  const counters = new Map<string, number>();
+
+  rows.forEach((row) => {
+    const state = (row.uf ?? '').trim().toUpperCase();
+    if (!state || !REGION_BY_STATE[state]) {
+      return;
+    }
+
+    counters.set(state, (counters.get(state) ?? 0) + 1);
+  });
+
+  return Array.from(counters.entries())
+    .map(([estado, total]) => ({ estado, total, regiao: REGION_BY_STATE[estado] }))
+    .sort((a, b) => b.total - a.total || a.estado.localeCompare(b.estado));
+}
+
+function buildIncidentTypeDistribution(rows: IncidentRow[]) {
+  return buildDistribution(rows.map((row) => normalizeText(row.tipo) ?? 'Não informado'));
 }
 
 function buildStateAndRegionDistribution(rows: DetailedAircraftRow[]) {
@@ -297,12 +357,17 @@ async function fetchTransactionsByMarcas(
   return allRows;
 }
 
-function buildConsolidation(rows: DetailedAircraftRow[], transactions: TransactionRow[]) {
+function buildConsolidation(rows: DetailedAircraftRow[], transactions: TransactionRow[], incidents: IncidentRow[]) {
   return {
     quantidade_aeronaves_registradas: rows.length,
     distribuicao_modelo: buildDistribution(rows.map((row) => normalizeText(row.ds_modelo) ?? 'Não informado')),
     distribuicao_ano: buildDistribution(rows.map((row) => normalizeYear(row.nr_ano_fabricacao))),
     mapa_brasil: buildStateAndRegionDistribution(rows),
+    ocorrencias: {
+      totais_por_classificacao: buildIncidentCounts(incidents),
+      relato_por_uf: buildIncidentStateDistribution(incidents),
+      relato_por_tipo: buildIncidentTypeDistribution(incidents),
+    },
     ...calcTransactionMetrics(transactions),
   };
 }
@@ -379,9 +444,12 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
 
   let manufacturerTransactions: TransactionRow[] = [];
   let modelTransactions: TransactionRow[] = [];
+  let aircraftIncidents: IncidentRow[] = [];
+  let manufacturerIncidents: IncidentRow[] = [];
+  let modelIncidents: IncidentRow[] = [];
 
   try {
-    [manufacturerTransactions, modelTransactions] = await Promise.all([
+    [manufacturerTransactions, modelTransactions, aircraftIncidents, manufacturerIncidents, modelIncidents] = await Promise.all([
       fetchTransactionsByMarcas(manufacturerMarcas, async (chunk, from, to) => {
         const { data, error } = await supabase
           .from(TRANSACTIONS_TABLE_NAME)
@@ -400,23 +468,78 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
 
         return { data: (data as TransactionRow[] | null) ?? [], error };
       }),
+      fetchAllPages<IncidentRow>(async (from, to) => {
+        const { data, error } = await supabase
+          .from(INCIDENTS_TABLE_NAME)
+          .select('link, data, marca, classificacao, tipo, localidade, uf, aerodromo, operacao, status')
+          .eq('marca', currentAircraft.marcas)
+          .range(from, to);
+
+        return { data: (data as IncidentRow[] | null) ?? [], error };
+      }),
+      fetchIncidentsByMarcas(manufacturerMarcas, async (chunk, from, to) => {
+        const { data, error } = await supabase
+          .from(INCIDENTS_TABLE_NAME)
+          .select('link, data, marca, classificacao, tipo, localidade, uf, aerodromo, operacao, status')
+          .in('marca', chunk)
+          .range(from, to);
+
+        return { data: (data as IncidentRow[] | null) ?? [], error };
+      }),
+      fetchIncidentsByMarcas(modelMarcas, async (chunk, from, to) => {
+        const { data, error } = await supabase
+          .from(INCIDENTS_TABLE_NAME)
+          .select('link, data, marca, classificacao, tipo, localidade, uf, aerodromo, operacao, status')
+          .in('marca', chunk)
+          .range(from, to);
+
+        return { data: (data as IncidentRow[] | null) ?? [], error };
+      }),
     ]);
   } catch {
-    return NextResponse.json({ error: 'Falha ao consultar histórico consolidado de negociações.' }, { status: 502 });
+    return NextResponse.json({ error: 'Falha ao consultar histórico consolidado de negociações e ocorrências.' }, { status: 502 });
   }
+
+  const aircraftIncidentCounts = buildIncidentCounts(aircraftIncidents);
+  const aircraftHasHistory = aircraftIncidentCounts.some((item) => item.total > 0);
 
   const snapshot: AircraftConsolidatedSnapshot = {
     marca_consultada: currentAircraft.marcas,
     fabricante,
     modelo,
     consulta_realizada_em: new Date().toISOString(),
-    fonte_url: 'base_interna:detailed_aircrafts_info+history_transactions_cache',
-    fabricante_consolidado: buildConsolidation(manufacturerRows, manufacturerTransactions),
+    fonte_url: 'base_interna:detailed_aircrafts_info+history_transactions_cache+aicraft_incidents',
+    aeronave_consultada_ocorrencias: {
+      totais_por_classificacao: aircraftIncidentCounts,
+      historico: aircraftIncidents,
+      possui_historico: aircraftHasHistory,
+    },
+    fabricante_consolidado: buildConsolidation(manufacturerRows, manufacturerTransactions, manufacturerIncidents),
     modelo_consolidado: {
-      ...buildConsolidation(modelRows, modelTransactions),
+      ...buildConsolidation(modelRows, modelTransactions, modelIncidents),
       aeronaves_registradas_atualmente: modelMarcas.sort((a, b) => a.localeCompare(b)),
     },
   };
 
   return NextResponse.json(snapshot);
+}
+
+async function fetchIncidentsByMarcas(
+  marcas: string[],
+  queryChunk: (chunk: string[], from: number, to: number) => Promise<{ data: IncidentRow[] | null; error: unknown }>,
+) {
+  if (marcas.length === 0) {
+    return [] as IncidentRow[];
+  }
+
+  const CHUNK_SIZE = 300;
+  const allRows: IncidentRow[] = [];
+
+  for (let i = 0; i < marcas.length; i += CHUNK_SIZE) {
+    const chunk = marcas.slice(i, i + CHUNK_SIZE);
+    const chunkRows = await fetchAllPages<IncidentRow>((from, to) => queryChunk(chunk, from, to));
+    allRows.push(...chunkRows);
+  }
+
+  return allRows;
 }

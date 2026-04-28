@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { AircraftConsolidatedSnapshot, ConsolidatedMetrics, DistributionItem } from '@/types/aircraft';
+import type { AircraftConsolidatedSnapshot, ConsolidatedMetrics, DistributionItem, IncidentCount, IncidentDetail } from '@/types/aircraft';
 
 type AircraftConsolidatedProps = {
   snapshot: AircraftConsolidatedSnapshot | null;
@@ -232,6 +232,151 @@ function BrazilMapInfographic({ metrics }: { metrics: ConsolidatedMetrics }) {
   );
 }
 
+function IncidentCountCards({ counts }: { counts: IncidentCount[] }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-3">
+      {counts.map((item) => (
+        <article key={item.classificacao} className="rounded-md border border-slate-200 p-3">
+          <p className="text-xs text-slate-500">{item.classificacao}</p>
+          <p className="mt-1 text-2xl font-semibold text-slate-900">{formatNumber(item.total)}</p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function IncidentHistoryTable({ incidents }: { incidents: IncidentDetail[] }) {
+  if (incidents.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 overflow-x-auto rounded-md border border-slate-200">
+      <table className="min-w-full text-left text-xs text-slate-700">
+        <thead className="bg-slate-100 text-slate-800">
+          <tr>
+            <th className="px-3 py-2 font-semibold">Data</th>
+            <th className="px-3 py-2 font-semibold">Classificação</th>
+            <th className="px-3 py-2 font-semibold">Tipo</th>
+            <th className="px-3 py-2 font-semibold">Localidade</th>
+            <th className="px-3 py-2 font-semibold">UF</th>
+            <th className="px-3 py-2 font-semibold">Aeródromo</th>
+            <th className="px-3 py-2 font-semibold">Operação</th>
+            <th className="px-3 py-2 font-semibold">Status</th>
+            <th className="px-3 py-2 font-semibold">Link</th>
+          </tr>
+        </thead>
+        <tbody>
+          {incidents.map((incident, index) => (
+            <tr key={`${incident.link ?? 'sem-link'}-${incident.data ?? 'sem-data'}-${index}`} className="border-t border-slate-100">
+              <td className="px-3 py-2">{incident.data?.trim() || '-'}</td>
+              <td className="px-3 py-2">{incident.classificacao?.trim() || '-'}</td>
+              <td className="px-3 py-2">{incident.tipo?.trim() || '-'}</td>
+              <td className="px-3 py-2">{incident.localidade?.trim() || '-'}</td>
+              <td className="px-3 py-2">{incident.uf?.trim() || '-'}</td>
+              <td className="px-3 py-2">{incident.aerodromo?.trim() || '-'}</td>
+              <td className="px-3 py-2">{incident.operacao?.trim() || '-'}</td>
+              <td className="px-3 py-2">{incident.status?.trim() || '-'}</td>
+              <td className="px-3 py-2">
+                {incident.link?.trim() ? (
+                  <a
+                    href={incident.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-sky-700 underline hover:text-sky-900"
+                  >
+                    Abrir relatório
+                  </a>
+                ) : (
+                  '-'
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function IncidentTypeTable({ data }: { data: DistributionItem[] }) {
+  return (
+    <div className="overflow-x-auto rounded-md border border-slate-200">
+      <table className="min-w-full text-left text-sm text-slate-700">
+        <thead className="bg-slate-100 text-slate-800">
+          <tr>
+            <th className="px-3 py-2 font-semibold">Tipo</th>
+            <th className="px-3 py-2 font-semibold">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.length === 0 ? (
+            <tr>
+              <td className="px-3 py-2" colSpan={2}>
+                Sem dados de ocorrências por tipo.
+              </td>
+            </tr>
+          ) : (
+            data.map((item) => (
+              <tr key={item.label} className="border-t border-slate-100">
+                <td className="px-3 py-2">{item.label}</td>
+                <td className="px-3 py-2">{formatNumber(item.total)}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function IncidentStateChart({ data }: { data: ConsolidatedMetrics['ocorrencias']['relato_por_uf'] }) {
+  const max = Math.max(...data.map((item) => item.total), 0);
+
+  return (
+    <div className="rounded-md border border-slate-200 p-4">
+      <h5 className="text-sm font-semibold text-slate-800">Relato por UF</h5>
+      {data.length === 0 ? (
+        <p className="mt-3 text-sm text-slate-500">Sem dados por UF.</p>
+      ) : (
+        <ul className="mt-3 space-y-2">
+          {data.map((item) => {
+            const widthPercent = max > 0 ? (item.total / max) * 100 : 0;
+            return (
+              <li key={item.estado}>
+                <div className="mb-1 flex items-center justify-between text-xs text-slate-700">
+                  <span>
+                    {item.estado} ({item.regiao})
+                  </span>
+                  <span className="font-semibold">{formatNumber(item.total)}</span>
+                </div>
+                <div className="h-2 rounded bg-slate-100">
+                  <div className="h-2 rounded bg-sky-600" style={{ width: `${widthPercent}%` }} />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function IncidentSummarySection({ title, metrics }: { title: string; metrics: ConsolidatedMetrics }) {
+  return (
+    <div className="rounded-md border border-slate-200 p-4">
+      <h4 className="text-sm font-semibold text-slate-800">{title}</h4>
+      <div className="mt-3">
+        <IncidentCountCards counts={metrics.ocorrencias.totais_por_classificacao} />
+      </div>
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+        <IncidentStateChart data={metrics.ocorrencias.relato_por_uf} />
+        <IncidentTypeTable data={metrics.ocorrencias.relato_por_tipo} />
+      </div>
+    </div>
+  );
+}
+
 export default function AircraftConsolidated({ snapshot }: AircraftConsolidatedProps) {
   if (!snapshot) {
     return null;
@@ -245,6 +390,25 @@ export default function AircraftConsolidated({ snapshot }: AircraftConsolidatedP
       </div>
 
       <div className="mt-4 space-y-6">
+        <div className="rounded-md border border-slate-200 p-4">
+          <h3 className="text-base font-semibold text-slate-900">Ocorrências da aeronave consultada</h3>
+          <div
+            className={`mt-3 rounded-md border px-3 py-2 text-sm font-semibold ${
+              snapshot.aeronave_consultada_ocorrencias.possui_historico
+                ? 'border-amber-700 bg-amber-800/90 text-amber-50'
+                : 'border-green-200 bg-green-50 text-green-800'
+            }`}
+          >
+            {snapshot.aeronave_consultada_ocorrencias.possui_historico
+              ? 'AERONAVE COM HISTORICO DE ACIDENTE OU INCIDENTE'
+              : 'AERONAVE SEM HISTORICO DE ACIDENTE'}
+          </div>
+          <div className="mt-3">
+            <IncidentCountCards counts={snapshot.aeronave_consultada_ocorrencias.totais_por_classificacao} />
+          </div>
+          <IncidentHistoryTable incidents={snapshot.aeronave_consultada_ocorrencias.historico} />
+        </div>
+
         <div>
           <h3 className="text-base font-semibold text-slate-900">Fabricante: {snapshot.fabricante}</h3>
           <div className="mt-3">
@@ -256,6 +420,9 @@ export default function AircraftConsolidated({ snapshot }: AircraftConsolidatedP
           </div>
           <div className="mt-3">
             <BrazilMapInfographic metrics={snapshot.fabricante_consolidado} />
+          </div>
+          <div className="mt-3">
+            <IncidentSummarySection title="Ocorrências consolidadas por fabricante" metrics={snapshot.fabricante_consolidado} />
           </div>
         </div>
 
@@ -281,6 +448,9 @@ export default function AircraftConsolidated({ snapshot }: AircraftConsolidatedP
           </div>
           <div className="mt-3">
             <BrazilMapInfographic metrics={snapshot.modelo_consolidado} />
+          </div>
+          <div className="mt-3">
+            <IncidentSummarySection title="Ocorrências consolidadas por modelo" metrics={snapshot.modelo_consolidado} />
           </div>
         </div>
       </div>

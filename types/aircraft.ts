@@ -30,6 +30,26 @@ export type DistributionItem = {
   total: number;
 };
 
+export type IncidentClassificacao = 'ACIDENTE' | 'INCIDENTE' | 'INCIDENTE GRAVE';
+
+export type IncidentCount = {
+  classificacao: IncidentClassificacao;
+  total: number;
+};
+
+export type IncidentDetail = {
+  link: string | null;
+  data: string | null;
+  marca: string | null;
+  classificacao: string | null;
+  tipo: string | null;
+  localidade: string | null;
+  uf: string | null;
+  aerodromo: string | null;
+  operacao: string | null;
+  status: string | null;
+};
+
 export type StateDistributionItem = {
   estado: string;
   regiao: string;
@@ -53,6 +73,11 @@ export type ConsolidatedMetrics = {
     por_estado: StateDistributionItem[];
     por_regiao: RegionDistributionItem[];
   };
+  ocorrencias: {
+    totais_por_classificacao: IncidentCount[];
+    relato_por_uf: StateDistributionItem[];
+    relato_por_tipo: DistributionItem[];
+  };
 };
 
 export type ModelConsolidatedMetrics = ConsolidatedMetrics & {
@@ -67,4 +92,9 @@ export type AircraftConsolidatedSnapshot = {
   fonte_url: string;
   fabricante_consolidado: ConsolidatedMetrics;
   modelo_consolidado: ModelConsolidatedMetrics;
+  aeronave_consultada_ocorrencias: {
+    totais_por_classificacao: IncidentCount[];
+    historico: IncidentDetail[];
+    possui_historico: boolean;
+  };
 };
