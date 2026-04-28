@@ -15,6 +15,15 @@ function sortByMostRecent(transactions: DetectedTransaction[]) {
   });
 }
 
+function formatMonthYear(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat('pt-BR', { month: 'short', year: 'numeric', timeZone: 'UTC' }).format(parsed);
+}
+
 export default function AircraftTransactions({ transactions, isLoading = false }: AircraftTransactionsProps) {
   const sortedTransactions = useMemo(() => sortByMostRecent(transactions), [transactions]);
 
@@ -40,7 +49,7 @@ export default function AircraftTransactions({ transactions, isLoading = false }
               )}
 
               <div className="rounded-md border border-slate-200 p-4">
-                <p className="text-xs font-semibold uppercase text-sky-700">{transaction.data_nova}</p>
+                <p className="text-xs font-semibold uppercase text-sky-700">{formatMonthYear(transaction.data_nova)}</p>
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
                   <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                     <span className="font-medium">De:</span> {transaction.proprietario_anterior}

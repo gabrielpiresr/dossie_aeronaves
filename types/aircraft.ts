@@ -110,6 +110,10 @@ export type AircraftConsolidatedSnapshot = {
   fonte_url: string;
   fabricante_consolidado: ConsolidatedMetrics;
   modelo_consolidado: ModelConsolidatedMetrics;
+  operador_consolidado: {
+    operador_principal: string;
+    aeronaves_registradas_detalhes: RegisteredAircraftRow[];
+  };
   aeronave_consultada_ocorrencias: {
     totais_por_classificacao: IncidentCount[];
     historico: IncidentDetail[];
