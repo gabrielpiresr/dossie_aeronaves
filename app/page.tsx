@@ -39,7 +39,7 @@ export default function HomePage() {
       .from(tableName)
       .select('data_registro, marca, proprietario, operador')
       .eq('marca', marca)
-      .order('data_registro', { ascending: true })
+      .order('data_registro', { ascending: true });
 
     setIsLoading(false);
 
