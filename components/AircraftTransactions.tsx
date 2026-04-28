@@ -1,26 +1,37 @@
-import type { AircraftTransaction } from '@/types/aircraft';
+import type { DetectedTransaction } from '@/types/aircraft';
 
 type AircraftTransactionsProps = {
-  transactions: AircraftTransaction[];
+  transactions: DetectedTransaction[];
 };
 
 export default function AircraftTransactions({ transactions }: AircraftTransactionsProps) {
-  if (transactions.length === 0) {
-    return (
-      <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
-        Nenhuma transação para exibir.
-      </p>
-    );
-  }
-
   return (
-    <ul className="space-y-3">
-      {transactions.map((transaction) => (
-        <li key={transaction.id} className="rounded-md border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold uppercase text-slate-500">{transaction.date}</p>
-          <p className="mt-1 text-sm text-slate-800">{transaction.description}</p>
-        </li>
-      ))}
-    </ul>
+    <section className="mt-8 w-full rounded-md border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-900">Negociações Detectadas</h2>
+
+      {transactions.length === 0 ? (
+        <p className="mt-4 text-sm text-slate-600">Nenhuma negociação detectada.</p>
+      ) : (
+        <ul className="mt-4 space-y-4">
+          {transactions.map((transaction, index) => (
+            <li key={`${transaction.data_nova}-${index}`} className="rounded-md border border-slate-200 p-4">
+              <p className="text-sm text-slate-900">
+                <span className="font-medium">De:</span> {transaction.proprietario_anterior}
+              </p>
+              <p className="text-sm text-slate-900">
+                <span className="font-medium">Para:</span> {transaction.proprietario_novo}
+              </p>
+
+              <p className="mt-3 text-sm text-slate-700">
+                <span className="font-medium">Período:</span> {transaction.data_anterior} → {transaction.data_nova}
+              </p>
+              <p className="text-sm text-slate-700">
+                <span className="font-medium">Operador:</span> {transaction.operador || 'Não informado'}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }

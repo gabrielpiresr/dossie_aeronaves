@@ -1,12 +1,14 @@
-export type AircraftTransaction = {
-  id: string;
-  date: string;
-  description: string;
+export type AircraftRecord = {
+  DATA_REGISTRO: string;
+  MARCA: string;
+  PROPRIETARIO: string | null;
+  OPERADOR: string | null;
 };
 
-export type AircraftHistoryData = {
-  registration: string;
-  model?: string;
-  manufacturer?: string;
-  transactions: AircraftTransaction[];
+export type DetectedTransaction = {
+  data_anterior: string;
+  data_nova: string;
+  proprietario_anterior: string;
+  proprietario_novo: string;
+  operador: string;
 };

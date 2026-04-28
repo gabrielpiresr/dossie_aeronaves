@@ -1,6 +1,6 @@
 # aircraft-history
 
-Base inicial de uma aplicação Next.js para consulta de histórico de aeronaves.
+Aplicação Next.js (App Router) para consulta do histórico de aeronaves por matrícula (MARCA), com detecção de negociações por mudança de proprietário.
 
 ## Stack
 
@@ -22,7 +22,11 @@ cp .env.example .env.local
 
 - `NEXT_PUBLIC_SUPABASE_URL`: URL do projeto Supabase.
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: chave pública (anon) do Supabase.
-- `NEXT_PUBLIC_AIRCRAFT_TABLE_NAME`: nome da tabela que será usada futuramente para histórico.
+- `NEXT_PUBLIC_AIRCRAFT_TABLE_NAME`: nome da tabela com as colunas:
+  - `DATA_REGISTRO` (text)
+  - `MARCA` (text)
+  - `PROPRIETARIO` (text)
+  - `OPERADOR` (text)
 
 > Importante: não use a **service role key** no frontend.
 
@@ -33,7 +37,16 @@ npm install
 npm run dev
 ```
 
-Depois, abra [http://localhost:3000](http://localhost:3000).
+A aplicação estará em [http://localhost:3000](http://localhost:3000).
+
+## Fluxo da página
+
+1. Digite a matrícula (ex.: `PR-ABC`) e clique em **Buscar**.
+2. O input é normalizado (`trim` + `uppercase`) antes da consulta.
+3. A busca roda no Supabase com ordenação por `DATA_REGISTRO` crescente.
+4. A tela mostra:
+   - Histórico completo mês a mês (`DATA_REGISTRO`, `PROPRIETARIO`, `OPERADOR`)
+   - Seção **Negociações Detectadas** quando houver mudança de proprietário.
 
 ## Build de produção
 
@@ -42,16 +55,12 @@ npm run build
 npm run start
 ```
 
-## Deploy (próximos passos)
+## Deploy (depois)
 
 Você pode fazer deploy em plataformas como Vercel, Netlify ou infraestrutura própria com Node.js.
 
-Fluxo recomendado:
+Passos gerais:
 
-1. Configurar as mesmas variáveis de ambiente da sua máquina local na plataforma de deploy.
+1. Configurar as mesmas variáveis de ambiente no provedor.
 2. Executar `npm run build` no pipeline.
-3. Publicar o app usando `npm run start` (ou adaptando ao provedor).
-
----
-
-Atualmente, o client do Supabase já está configurado em `lib/supabase.ts`, mas ainda não há consulta real implementada.
+3. Publicar com `npm run start` (ou fluxo equivalente do provedor).
