@@ -172,6 +172,23 @@ function parseOperatorNames(value: string | null) {
   return Array.from(new Set(operators));
 }
 
+function parseOperatorDocuments(value: string | null) {
+  const chunks = (value ?? '')
+    .split('|')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const documents: string[] = [];
+
+  for (let i = 1; i < chunks.length; i += 4) {
+    const document = chunks[i]?.replace(/\D+/g, '') ?? '';
+    if (document.length >= 11) {
+      documents.push(document);
+    }
+  }
+
+  return Array.from(new Set(documents));
+}
+
 function dateFromUnknownFormat(value: string) {
   const trimmed = value.trim();
 
@@ -439,6 +456,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
   const fabricante = normalizeText(currentAircraft.nm_fabricante);
   const modelo = normalizeText(currentAircraft.ds_modelo);
   const operadorPrincipal = parseOperatorNames(currentAircraft.operadores)[0] ?? 'Não informado';
+  const operadorDocumento = parseOperatorDocuments(currentAircraft.operadores)[0] ?? null;
 
   if (!fabricante || !modelo) {
     return NextResponse.json(
@@ -471,13 +489,13 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
 
         return { data: (data as DetailedAircraftRow[] | null) ?? [], error };
       }),
-      operadorPrincipal === 'Não informado'
+      !operadorDocumento
         ? Promise.resolve([] as DetailedAircraftRow[])
         : fetchAllPages<DetailedAircraftRow>(async (from, to) => {
             const { data, error } = await supabase
               .from(DETAIL_TABLE_NAME)
               .select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, operadores, cd_tipo_icao, ds_categoria_homologacao, tp_motor, qt_motor')
-              .ilike('operadores', `%${operadorPrincipal}%`)
+              .ilike('operadores', `%${operadorDocumento}%`)
               .range(from, to);
 
             return { data: (data as DetailedAircraftRow[] | null) ?? [], error };
@@ -571,6 +589,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
     },
     operador_consolidado: {
       operador_principal: operadorPrincipal,
+      operador_documento: operadorDocumento,
       aeronaves_registradas_detalhes: Array.from(new Map(operatorRows.map((row) => [row.marcas, toRegisteredAircraftRow(row)])).values()),
     },
   };

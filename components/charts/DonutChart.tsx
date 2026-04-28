@@ -14,6 +14,7 @@ type DonutChartProps = {
   title: string;
   data: DonutDatum[];
   centerLabel?: string;
+  centerValue?: number;
   height?: number;
 };
 
@@ -23,13 +24,14 @@ function formatNumber(value: number) {
   return value.toLocaleString('pt-BR');
 }
 
-export default function DonutChart({ title, data, centerLabel = 'Total', height = 330 }: DonutChartProps) {
+export default function DonutChart({ title, data, centerLabel = 'Total', centerValue, height = 330 }: DonutChartProps) {
   if (data.length === 0) {
     return <p className="mt-2 text-xs text-slate-500">Sem dados.</p>;
   }
 
   const normalizedData = data.map((item) => ({ name: item.label, value: item.value }));
   const total = normalizedData.reduce((acc, item) => acc + item.value, 0);
+  const centerNumericValue = typeof centerValue === 'number' && Number.isFinite(centerValue) ? centerValue : total;
 
   const option: EChartsOption = {
     color: DONUT_COLORS,
@@ -93,7 +95,7 @@ export default function DonutChart({ title, data, centerLabel = 'Total', height 
         left: 'center',
         top: '35%',
         style: {
-          text: formatNumber(total),
+          text: formatNumber(Number(centerNumericValue.toFixed(2))),
           align: 'center',
           fill: '#0f172a',
           fontSize: 24,
