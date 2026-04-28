@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import AircraftHistory from '@/components/AircraftHistory';
 import AircraftSearch from '@/components/AircraftSearch';
 import AircraftTransactions from '@/components/AircraftTransactions';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseClient } from '@/lib/supabase';
 import type { AircraftRecord } from '@/types/aircraft';
 import { detectTransactions } from '@/utils/detectTransactions';
 
@@ -23,6 +23,13 @@ export default function HomePage() {
     if (!marca) {
       setRecords([]);
       setErrorMessage('Informe uma matrícula para buscar.');
+      return;
+    }
+
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      setRecords([]);
+      setErrorMessage('Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY para realizar a busca.');
       return;
     }
 

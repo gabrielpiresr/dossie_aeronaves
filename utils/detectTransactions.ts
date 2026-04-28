@@ -24,8 +24,8 @@ export function detectTransactions(records: AircraftRecord[]): DetectedTransacti
     const anterior = records[i - 1];
     const atual = records[i];
 
-    const nomeAnterior = limparTexto(anterior.PROPRIETARIO);
-    const nomeAtual = limparTexto(atual.PROPRIETARIO);
+    const nomeAnterior = limparTexto(anterior.proprietario);
+    const nomeAtual = limparTexto(atual.proprietario);
 
     if (!nomeAnterior || !nomeAtual) {
       continue;
@@ -33,11 +33,11 @@ export function detectTransactions(records: AircraftRecord[]): DetectedTransacti
 
     if (normalizarNome(nomeAnterior) !== normalizarNome(nomeAtual)) {
       transactions.push({
-        data_anterior: anterior.DATA_REGISTRO,
-        data_nova: atual.DATA_REGISTRO,
+        data_anterior: anterior.data_registro,
+        data_nova: atual.data_registro,
         proprietario_anterior: nomeAnterior,
         proprietario_novo: nomeAtual,
-        operador: limparTexto(atual.OPERADOR),
+        operador: limparTexto(atual.operador),
       });
     }
   }

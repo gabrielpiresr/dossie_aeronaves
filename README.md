@@ -23,10 +23,10 @@ cp .env.example .env.local
 - `NEXT_PUBLIC_SUPABASE_URL`: URL do projeto Supabase.
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: chave pública (anon) do Supabase.
 - `NEXT_PUBLIC_AIRCRAFT_TABLE_NAME`: nome da tabela com as colunas:
-  - `DATA_REGISTRO` (text)
-  - `MARCA` (text)
-  - `PROPRIETARIO` (text)
-  - `OPERADOR` (text)
+  - `data_registro` (text)
+  - `marca` (text)
+  - `proprietario` (text)
+  - `operador` (text)
 
 > Importante: não use a **service role key** no frontend.
 
@@ -43,9 +43,9 @@ A aplicação estará em [http://localhost:3000](http://localhost:3000).
 
 1. Digite a matrícula (ex.: `PR-ABC`) e clique em **Buscar**.
 2. O input é normalizado (`trim` + `uppercase`) antes da consulta.
-3. A busca roda no Supabase com ordenação por `DATA_REGISTRO` crescente.
+3. A busca roda no Supabase com ordenação por `data_registro` crescente.
 4. A tela mostra:
-   - Histórico completo mês a mês (`DATA_REGISTRO`, `PROPRIETARIO`, `OPERADOR`)
+   - Histórico completo mês a mês (`data_registro`, `proprietario`, `operador`)
    - Seção **Negociações Detectadas** quando houver mudança de proprietário.
 
 ## Build de produção

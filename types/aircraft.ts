@@ -1,8 +1,8 @@
 export type AircraftRecord = {
-  DATA_REGISTRO: string;
-  MARCA: string;
-  PROPRIETARIO: string | null;
-  OPERADOR: string | null;
+  data_registro: string;
+  marca: string;
+  proprietario: string | null;
+  operador: string | null;
 };
 
 export type DetectedTransaction = {
