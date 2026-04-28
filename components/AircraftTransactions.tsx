@@ -51,6 +51,12 @@ export default function AircraftTransactions({ transactions }: AircraftTransacti
                   </p>
                 </div>
 
+                <div className="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-3">
+                  <p><span className="font-medium">Matrícula:</span> {transaction.marca ?? '-'}</p>
+                  <p><span className="font-medium">Modelo:</span> {transaction.modelo ?? '-'}</p>
+                  <p><span className="font-medium">Fabricante:</span> {transaction.fabricante ?? '-'}</p>
+                </div>
+
                 <p className="mt-3 text-sm text-slate-700">
                   <span className="font-medium">Operador:</span> {transaction.operador || 'Não informado'}
                 </p>
