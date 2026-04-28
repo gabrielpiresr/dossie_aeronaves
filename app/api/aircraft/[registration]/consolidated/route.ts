@@ -213,7 +213,10 @@ function calcTransactionMetrics(rows: TransactionRow[]) {
   };
 }
 
-async function fetchTransactionsByMarcas(supabase: ReturnType<typeof createClient>, marcas: string[]) {
+async function fetchTransactionsByMarcas(
+  marcas: string[],
+  queryChunk: (chunk: string[]) => Promise<TransactionRow[]>,
+) {
   if (marcas.length === 0) {
     return [] as TransactionRow[];
   }
@@ -223,17 +226,8 @@ async function fetchTransactionsByMarcas(supabase: ReturnType<typeof createClien
 
   for (let i = 0; i < marcas.length; i += CHUNK_SIZE) {
     const chunk = marcas.slice(i, i + CHUNK_SIZE);
-
-    const { data, error } = await supabase
-      .from(TRANSACTIONS_TABLE_NAME)
-      .select('marca, data_anterior, data_nova')
-      .in('marca', chunk);
-
-    if (error) {
-      throw error;
-    }
-
-    allRows.push(...((data as TransactionRow[] | null) ?? []));
+    const rows = await queryChunk(chunk);
+    allRows.push(...rows);
   }
 
   return allRows;
@@ -314,8 +308,30 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
 
   try {
     [manufacturerTransactions, modelTransactions] = await Promise.all([
-      fetchTransactionsByMarcas(supabase, manufacturerMarcas),
-      fetchTransactionsByMarcas(supabase, modelMarcas),
+      fetchTransactionsByMarcas(manufacturerMarcas, async (chunk) => {
+        const { data, error } = await supabase
+          .from(TRANSACTIONS_TABLE_NAME)
+          .select('marca, data_anterior, data_nova')
+          .in('marca', chunk);
+
+        if (error) {
+          throw new Error('Erro ao consultar transações por marca.');
+        }
+
+        return (data as TransactionRow[] | null) ?? [];
+      }),
+      fetchTransactionsByMarcas(modelMarcas, async (chunk) => {
+        const { data, error } = await supabase
+          .from(TRANSACTIONS_TABLE_NAME)
+          .select('marca, data_anterior, data_nova')
+          .in('marca', chunk);
+
+        if (error) {
+          throw new Error('Erro ao consultar transações por marca.');
+        }
+
+        return (data as TransactionRow[] | null) ?? [];
+      }),
     ]);
   } catch {
     return NextResponse.json({ error: 'Falha ao consultar histórico consolidado de negociações.' }, { status: 502 });
