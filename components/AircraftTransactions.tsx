@@ -38,10 +38,6 @@ export default function AircraftTransactions({ transactions }: AircraftTransacti
 
               <div className="rounded-md border border-slate-200 p-4">
                 <p className="text-xs font-semibold uppercase text-sky-700">{transaction.data_nova}</p>
-                <p className="mt-3 text-sm text-slate-700">
-                  <span className="font-medium">Período:</span> {transaction.data_anterior} → {transaction.data_nova}
-                </p>
-
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
                   <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                     <span className="font-medium">De:</span> {transaction.proprietario_anterior}
@@ -49,6 +45,12 @@ export default function AircraftTransactions({ transactions }: AircraftTransacti
                   <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
                     <span className="font-medium">Para:</span> {transaction.proprietario_novo}
                   </p>
+                </div>
+
+                <div className="mt-3 grid gap-2 text-sm text-slate-700 md:grid-cols-3">
+                  <p><span className="font-medium">Matrícula:</span> {transaction.marca ?? '-'}</p>
+                  <p><span className="font-medium">Modelo:</span> {transaction.modelo ?? '-'}</p>
+                  <p><span className="font-medium">Fabricante:</span> {transaction.fabricante ?? '-'}</p>
                 </div>
 
                 <p className="mt-3 text-sm text-slate-700">

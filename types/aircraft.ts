@@ -1,3 +1,5 @@
+export type SearchMode = 'matricula' | 'modelo' | 'fabricante';
+
 export type AircraftRecord = {
   data_registro: string;
   marca: string;
@@ -11,6 +13,9 @@ export type DetectedTransaction = {
   proprietario_anterior: string;
   proprietario_novo: string;
   operador: string;
+  marca?: string;
+  modelo?: string;
+  fabricante?: string;
 };
 
 export type AircraftDetailField = {
@@ -80,8 +85,21 @@ export type ConsolidatedMetrics = {
   };
 };
 
+export type RegisteredAircraftRow = {
+  marca: string;
+  fabricante: string;
+  modelo: string;
+  ano_fabricacao: string;
+  tipo_icao: string;
+  categoria: string;
+  tipo_motor: string;
+  quantidade_motores: string;
+  estado_operacao: string;
+};
+
 export type ModelConsolidatedMetrics = ConsolidatedMetrics & {
   aeronaves_registradas_atualmente: string[];
+  aeronaves_registradas_detalhes: RegisteredAircraftRow[];
 };
 
 export type AircraftConsolidatedSnapshot = {
@@ -97,4 +115,5 @@ export type AircraftConsolidatedSnapshot = {
     historico: IncidentDetail[];
     possui_historico: boolean;
   };
+  ocorrencias_detalhes_modelo: IncidentDetail[];
 };

@@ -1,113 +1,148 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import AircraftConsolidated from '@/components/AircraftConsolidated';
-import AircraftHistory from '@/components/AircraftHistory';
+import AircraftCurrentAircraftOccurrences from '@/components/AircraftCurrentAircraftOccurrences';
 import AircraftRabDetails from '@/components/AircraftRabDetails';
 import AircraftSearch from '@/components/AircraftSearch';
 import AircraftTransactions from '@/components/AircraftTransactions';
 import { getSupabaseClient } from '@/lib/supabase';
-import type { AircraftConsolidatedSnapshot, AircraftRabSnapshot, AircraftRecord } from '@/types/aircraft';
-import { detectTransactions } from '@/utils/detectTransactions';
+import type { AircraftConsolidatedSnapshot, AircraftRabSnapshot, DetectedTransaction, SearchMode } from '@/types/aircraft';
 
 export default function HomePage() {
-  const [records, setRecords] = useState<AircraftRecord[]>([]);
+  const [transactions, setTransactions] = useState<DetectedTransaction[]>([]);
   const [aircraftSnapshot, setAircraftSnapshot] = useState<AircraftRabSnapshot | null>(null);
   const [consolidatedSnapshot, setConsolidatedSnapshot] = useState<AircraftConsolidatedSnapshot | null>(null);
+  const [searchMode, setSearchMode] = useState<SearchMode>('matricula');
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const transactions = useMemo(() => detectTransactions(records), [records]);
-
-  const handleSearch = async (marca: string) => {
+  const handleSearch = useCallback(async (term: string, mode: SearchMode) => {
     setHasSearched(true);
+    setSearchMode(mode);
     setErrorMessage('');
+    setTransactions([]);
 
-    if (!marca) {
-      setRecords([]);
+    if (!term) {
       setAircraftSnapshot(null);
       setConsolidatedSnapshot(null);
-      setErrorMessage('Informe uma matrícula para buscar.');
+      setErrorMessage('Informe um valor para buscar.');
       return;
     }
 
     setIsLoading(true);
+    const supabase = getSupabaseClient();
 
-    const [detailsResponse, consolidatedResponse, historicalResponse] = await Promise.all([
-      fetch(`/api/aircraft/${encodeURIComponent(marca)}`, { cache: 'no-store' }),
-      fetch(`/api/aircraft/${encodeURIComponent(marca)}/consolidated`, { cache: 'no-store' }),
-      (async () => {
-        const supabase = getSupabaseClient();
-        if (!supabase) {
-          return { data: null as AircraftRecord[] | null, error: null };
-        }
+    if (mode === 'matricula') {
+      const [detailsResponse, consolidatedResponse] = await Promise.all([
+        fetch(`/api/aircraft/${encodeURIComponent(term)}`, { cache: 'no-store' }),
+        fetch(`/api/aircraft/${encodeURIComponent(term)}/consolidated`, { cache: 'no-store' }),
+      ]);
 
-        const tableName = process.env.NEXT_PUBLIC_AIRCRAFT_TABLE_NAME;
-        if (!tableName) {
-          return { data: null as AircraftRecord[] | null, error: null };
-        }
+      if (!detailsResponse.ok) {
+        setIsLoading(false);
+        setAircraftSnapshot(null);
+        setConsolidatedSnapshot(null);
+        setErrorMessage('Não foi possível consultar os dados detalhados no momento.');
+        return;
+      }
 
-        const { data, error } = await supabase
+      setAircraftSnapshot((await detailsResponse.json()) as AircraftRabSnapshot);
+      setConsolidatedSnapshot(consolidatedResponse.ok ? ((await consolidatedResponse.json()) as AircraftConsolidatedSnapshot) : null);
+
+      if (supabase) {
+        const tableName = process.env.NEXT_PUBLIC_AIRCRAFT_TRANSACTIONS_TABLE_NAME ?? 'history_transactions_cache';
+        const { data } = await supabase
           .from(tableName)
-          .select('data_registro, marca, proprietario, operador')
-          .eq('marca', marca)
-          .order('data_registro', { ascending: true });
+          .select('marca, data_anterior, data_nova, proprietario_anterior, proprietario_novo, operador')
+          .eq('marca', term)
+          .order('data_nova', { ascending: false });
 
-        return { data: (data as AircraftRecord[]) ?? [], error };
-      })(),
-    ]);
+        setTransactions(((data as DetectedTransaction[] | null) ?? []).map((item) => ({ ...item, marca: term })));
+      }
+
+      setIsLoading(false);
+      return;
+    }
+
+    setAircraftSnapshot(null);
+    if (!supabase) {
+      setIsLoading(false);
+      setErrorMessage('Integração com base indisponível para este tipo de busca.');
+      return;
+    }
+
+    const detailsTable = process.env.NEXT_PUBLIC_AIRCRAFT_DETAILS_TABLE_NAME ?? 'detailed_aircrafts_info';
+    const transactionsTable = process.env.NEXT_PUBLIC_AIRCRAFT_TRANSACTIONS_TABLE_NAME ?? 'history_transactions_cache';
+    const baseQuery = supabase.from(detailsTable).select('marcas, ds_modelo, nm_fabricante').limit(2000);
+    const { data: detailsRows } = await (mode === 'modelo'
+      ? baseQuery.ilike('ds_modelo', `%${term}%`)
+      : baseQuery.ilike('nm_fabricante', `%${term}%`));
+
+    const typedRows = (detailsRows as Array<{ marcas: string; ds_modelo: string | null; nm_fabricante: string | null }> | null) ?? [];
+    const marcas = Array.from(new Set(typedRows.map((row) => row.marcas)));
+
+    if (marcas.length === 0) {
+      setTransactions([]);
+      setConsolidatedSnapshot(null);
+      setIsLoading(false);
+      return;
+    }
+
+    const consolidatedResponse = await fetch(`/api/aircraft/${encodeURIComponent(marcas[0])}/consolidated`, { cache: 'no-store' });
+    setConsolidatedSnapshot(consolidatedResponse.ok ? ((await consolidatedResponse.json()) as AircraftConsolidatedSnapshot) : null);
+
+    const { data: txRows } = await supabase
+      .from(transactionsTable)
+      .select('marca, data_anterior, data_nova, proprietario_anterior, proprietario_novo, operador')
+      .in('marca', marcas)
+      .order('data_nova', { ascending: false })
+      .limit(5000);
+
+    const meta = new Map(typedRows.map((row) => [row.marcas, { modelo: row.ds_modelo ?? '-', fabricante: row.nm_fabricante ?? '-' }]));
+
+    setTransactions(
+      ((txRows as DetectedTransaction[] | null) ?? []).map((item) => ({
+        ...item,
+        marca: item.marca,
+        modelo: meta.get(item.marca ?? '')?.modelo ?? '-',
+        fabricante: meta.get(item.marca ?? '')?.fabricante ?? '-',
+      })),
+    );
 
     setIsLoading(false);
+  }, []);
 
-    if (!detailsResponse.ok) {
-      setRecords([]);
-      setAircraftSnapshot(null);
-      setConsolidatedSnapshot(null);
-      setErrorMessage('Não foi possível consultar os dados detalhados no momento. Tente novamente em instantes.');
-      return;
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const term = params.get('term');
+    const mode = params.get('mode') as SearchMode | null;
+    if (term && mode && ['matricula', 'modelo', 'fabricante'].includes(mode)) {
+      const timer = window.setTimeout(() => {
+        void handleSearch(term, mode);
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
-
-    const detailsData = (await detailsResponse.json()) as AircraftRabSnapshot;
-    setAircraftSnapshot(detailsData);
-
-    if (!consolidatedResponse.ok) {
-      setConsolidatedSnapshot(null);
-      setErrorMessage('Dados atuais carregados, mas não foi possível montar o consolidado agora.');
-      return;
-    }
-
-    const consolidatedData = (await consolidatedResponse.json()) as AircraftConsolidatedSnapshot;
-    setConsolidatedSnapshot(consolidatedData);
-
-    if (historicalResponse.error) {
-      setRecords([]);
-      setErrorMessage('Dados atuais carregados, mas não foi possível consultar o histórico de negociações agora.');
-      return;
-    }
-
-    setRecords(historicalResponse.data ?? []);
-  };
+  }, [handleSearch]);
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center px-6 py-20">
+    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col items-center px-6 py-20">
       <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dossiê de Aeronaves</h1>
-      <p className="mt-3 text-sm text-slate-600">Consulte dados atuais da base interna e negociações passadas por matrícula.</p>
+      <p className="mt-3 text-sm text-slate-600">Consulte por matrícula, modelo ou fabricante.</p>
 
-      <div className="mt-8 w-full max-w-xl">
+      <div className="mt-8 w-full max-w-3xl">
         <AircraftSearch isLoading={isLoading} onSearch={handleSearch} />
       </div>
 
-      {errorMessage && (
-        <div className="mt-6 w-full rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</div>
-      )}
+      {errorMessage && <div className="mt-6 w-full rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</div>}
 
-      {hasSearched && !errorMessage && aircraftSnapshot && (
+      {hasSearched && !errorMessage && (
         <>
           <AircraftRabDetails snapshot={aircraftSnapshot} />
-          <AircraftConsolidated snapshot={consolidatedSnapshot} />
+          <AircraftCurrentAircraftOccurrences snapshot={consolidatedSnapshot} />
+          <AircraftConsolidated snapshot={consolidatedSnapshot} viewMode={searchMode} />
           <AircraftTransactions transactions={transactions} />
-          <AircraftHistory records={records} />
         </>
       )}
     </main>
