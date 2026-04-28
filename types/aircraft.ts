@@ -18,9 +18,17 @@ export type AircraftDetailField = {
   value: string;
 };
 
+export type AircraftIncident = {
+  link_relatorio?: string;
+  campos: AircraftDetailField[];
+};
+
 export type AircraftRabSnapshot = {
   marca: string;
   consulta_realizada_em?: string;
   fonte_url: string;
   campos: AircraftDetailField[];
+  fonte_cenipa_url?: string;
+  incidentes: AircraftIncident[];
+  incidentes_consulta_erro?: string;
 };

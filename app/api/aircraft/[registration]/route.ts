@@ -1,10 +1,16 @@
 import { NextResponse } from 'next/server';
+import { extractIncidentsFromCenipaHtml } from '@/utils/cenipaParser';
 import { extractFieldsFromRabHtml, extractSearchTimestamp } from '@/utils/rabParser';
 
 const RAB_BASE_URL = 'https://aeronaves.anac.gov.br/aeronaves';
+const CENIPA_REPORTS_URL = 'https://sistema.cenipa.fab.mil.br/cenipa/paginas/relatorios/relatorios.php';
 
 function normalizeRegistration(registration: string) {
   return registration.trim().toUpperCase();
+}
+
+function normalizeRegistrationForCenipa(registration: string) {
+  return registration.replace(/[^A-Z0-9]/gi, '');
 }
 
 function buildSearchUrl(registration: string) {
@@ -30,6 +36,19 @@ function buildDirectUrl(registration: string) {
   return `${RAB_BASE_URL}/cons_rab_resposta.asp?${params.toString()}`;
 }
 
+function buildCenipaUrl(registration: string) {
+  const params = new URLSearchParams({
+    matricula_anv: registration,
+    numero_relatorio: '',
+    data_inicial: '',
+    data_final: '',
+    classificacao: '',
+    uf: '',
+  });
+
+  return `${CENIPA_REPORTS_URL}?${params.toString()}`;
+}
+
 async function fetchPage(url: string) {
   const response = await fetch(url, {
     method: 'GET',
@@ -43,7 +62,7 @@ async function fetchPage(url: string) {
   });
 
   if (!response.ok) {
-    throw new Error(`Falha ao consultar ANAC (HTTP ${response.status}).`);
+    throw new Error(`Falha ao consultar endpoint externo (HTTP ${response.status}).`);
   }
 
   return response.text();
@@ -58,12 +77,12 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
       return NextResponse.json({ error: 'Matrícula inválida.' }, { status: 400 });
     }
 
-    const candidateUrls = [buildSearchUrl(normalizedRegistration), buildDirectUrl(normalizedRegistration)];
+    const candidateRabUrls = [buildSearchUrl(normalizedRegistration), buildDirectUrl(normalizedRegistration)];
 
     let selectedHtml = '';
     let selectedUrl = '';
 
-    for (const url of candidateUrls) {
+    for (const url of candidateRabUrls) {
       try {
         const html = await fetchPage(url);
         const fields = extractFieldsFromRabHtml(html);
@@ -90,11 +109,26 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
 
     const fields = extractFieldsFromRabHtml(selectedHtml);
 
+    const cenipaUrl = buildCenipaUrl(normalizeRegistrationForCenipa(normalizedRegistration));
+    let incidentes = [];
+    let incidentesConsultaErro: string | undefined;
+
+    try {
+      const cenipaHtml = await fetchPage(cenipaUrl);
+      incidentes = extractIncidentsFromCenipaHtml(cenipaHtml);
+    } catch {
+      incidentesConsultaErro =
+        'Dados atuais da ANAC carregados, mas não foi possível consultar incidentes no CENIPA neste momento.';
+    }
+
     return NextResponse.json({
       marca: normalizedRegistration,
       consulta_realizada_em: extractSearchTimestamp(selectedHtml),
       fonte_url: selectedUrl,
       campos: fields,
+      fonte_cenipa_url: cenipaUrl,
+      incidentes,
+      incidentes_consulta_erro: incidentesConsultaErro,
     });
   } catch {
     return NextResponse.json(

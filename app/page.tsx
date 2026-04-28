@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import AircraftHistory from '@/components/AircraftHistory';
+import AircraftIncidents from '@/components/AircraftIncidents';
 import AircraftRabDetails from '@/components/AircraftRabDetails';
 import AircraftSearch from '@/components/AircraftSearch';
 import AircraftTransactions from '@/components/AircraftTransactions';
@@ -91,6 +92,7 @@ export default function HomePage() {
       {hasSearched && !errorMessage && rabSnapshot && (
         <>
           <AircraftRabDetails snapshot={rabSnapshot} />
+          <AircraftIncidents snapshot={rabSnapshot} />
           <AircraftTransactions transactions={transactions} />
           <AircraftHistory records={records} />
         </>
