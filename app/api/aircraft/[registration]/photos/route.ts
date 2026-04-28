@@ -15,8 +15,20 @@ function normalizeRegistration(registration: string) {
 }
 
 function extractJetPhotosUrls(html: string) {
-  const matches = html.match(/https:\/\/cdn\.jetphotos\.com\/[0-9]+\/[0-9]+\/[0-9]+_[0-9]+\.jpg/g) ?? [];
-  return Array.from(new Set(matches));
+  const rawMatches = html.match(/https?:\/\/cdn\.jetphotos\.com\/[^"'\\s<>]+?\.(?:jpg|jpeg|webp)(?:\?[^"'\\s<>]*)?/gi) ?? [];
+  const escapedMatches = html.match(/https?:\\\/\\\/cdn\.jetphotos\.com\\\/[^"'\\s<>]+?\.(?:jpg|jpeg|webp)(?:\?[^"'\\s<>]*)?/gi) ?? [];
+  const normalizedEscaped = escapedMatches.map((url) => url.replace(/\\\//g, '/'));
+  const allMatches = [...rawMatches, ...normalizedEscaped];
+  const cleaned = allMatches.map((url) => url.replace(/\?.*$/, ''));
+  const unique = Array.from(new Set(cleaned));
+
+  if (unique.length === 0) {
+    console.info('[jetphotos] extractor found 0 urls in HTML payload');
+  } else {
+    console.info(`[jetphotos] extractor found ${unique.length} urls. first=${unique[0]}`);
+  }
+
+  return unique;
 }
 
 type JetPhotosAttemptResult = {
