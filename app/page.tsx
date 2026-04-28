@@ -11,7 +11,7 @@ import { detectTransactions } from '@/utils/detectTransactions';
 
 export default function HomePage() {
   const [records, setRecords] = useState<AircraftRecord[]>([]);
-  const [rabSnapshot, setRabSnapshot] = useState<AircraftRabSnapshot | null>(null);
+  const [aircraftSnapshot, setAircraftSnapshot] = useState<AircraftRabSnapshot | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -24,14 +24,14 @@ export default function HomePage() {
 
     if (!marca) {
       setRecords([]);
-      setRabSnapshot(null);
+      setAircraftSnapshot(null);
       setErrorMessage('Informe uma matrícula para buscar.');
       return;
     }
 
     setIsLoading(true);
 
-    const [rabResponse, historicalResponse] = await Promise.all([
+    const [detailsResponse, historicalResponse] = await Promise.all([
       fetch(`/api/aircraft/${encodeURIComponent(marca)}`, { cache: 'no-store' }),
       (async () => {
         const supabase = getSupabaseClient();
@@ -56,15 +56,15 @@ export default function HomePage() {
 
     setIsLoading(false);
 
-    if (!rabResponse.ok) {
+    if (!detailsResponse.ok) {
       setRecords([]);
-      setRabSnapshot(null);
-      setErrorMessage('Não foi possível consultar a ANAC no momento. Tente novamente em instantes.');
+      setAircraftSnapshot(null);
+      setErrorMessage('Não foi possível consultar os dados detalhados no momento. Tente novamente em instantes.');
       return;
     }
 
-    const rabData = (await rabResponse.json()) as AircraftRabSnapshot;
-    setRabSnapshot(rabData);
+    const detailsData = (await detailsResponse.json()) as AircraftRabSnapshot;
+    setAircraftSnapshot(detailsData);
 
     if (historicalResponse.error) {
       setRecords([]);
@@ -78,7 +78,7 @@ export default function HomePage() {
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center px-6 py-20">
       <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dossiê de Aeronaves</h1>
-      <p className="mt-3 text-sm text-slate-600">Consulte dados atuais no RAB (ANAC) e negociações passadas por matrícula.</p>
+      <p className="mt-3 text-sm text-slate-600">Consulte dados atuais da base interna e negociações passadas por matrícula.</p>
 
       <div className="mt-8 w-full max-w-xl">
         <AircraftSearch isLoading={isLoading} onSearch={handleSearch} />
@@ -88,9 +88,9 @@ export default function HomePage() {
         <div className="mt-6 w-full rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</div>
       )}
 
-      {hasSearched && !errorMessage && rabSnapshot && (
+      {hasSearched && !errorMessage && aircraftSnapshot && (
         <>
-          <AircraftRabDetails snapshot={rabSnapshot} />
+          <AircraftRabDetails snapshot={aircraftSnapshot} />
           <AircraftTransactions transactions={transactions} />
           <AircraftHistory records={records} />
         </>
