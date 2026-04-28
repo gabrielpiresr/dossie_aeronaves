@@ -94,7 +94,7 @@ export default function DonutChart({ title, data, centerLabel = 'Total', height 
         top: '35%',
         style: {
           text: formatNumber(total),
-          textAlign: 'center',
+          align: 'center',
           fill: '#0f172a',
           fontSize: 24,
           fontWeight: 700,
@@ -106,7 +106,7 @@ export default function DonutChart({ title, data, centerLabel = 'Total', height 
         top: '47%',
         style: {
           text: centerLabel,
-          textAlign: 'center',
+          align: 'center',
           fill: '#64748b',
           fontSize: 12,
           fontWeight: 500,
