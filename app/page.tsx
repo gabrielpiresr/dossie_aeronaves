@@ -37,7 +37,7 @@ export default function HomePage() {
 
     const { data, error } = await supabase
       .from(tableName)
-      select('data_registro, marca, proprietario, operador')
+      .select('data_registro, marca, proprietario, operador')
       .eq('marca', marca)
       .order('data_registro', { ascending: true })
 
