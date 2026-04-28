@@ -1,17 +1,19 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import AircraftConsolidated from '@/components/AircraftConsolidated';
 import AircraftHistory from '@/components/AircraftHistory';
 import AircraftRabDetails from '@/components/AircraftRabDetails';
 import AircraftSearch from '@/components/AircraftSearch';
 import AircraftTransactions from '@/components/AircraftTransactions';
 import { getSupabaseClient } from '@/lib/supabase';
-import type { AircraftRabSnapshot, AircraftRecord } from '@/types/aircraft';
+import type { AircraftConsolidatedSnapshot, AircraftRabSnapshot, AircraftRecord } from '@/types/aircraft';
 import { detectTransactions } from '@/utils/detectTransactions';
 
 export default function HomePage() {
   const [records, setRecords] = useState<AircraftRecord[]>([]);
   const [aircraftSnapshot, setAircraftSnapshot] = useState<AircraftRabSnapshot | null>(null);
+  const [consolidatedSnapshot, setConsolidatedSnapshot] = useState<AircraftConsolidatedSnapshot | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -25,14 +27,16 @@ export default function HomePage() {
     if (!marca) {
       setRecords([]);
       setAircraftSnapshot(null);
+      setConsolidatedSnapshot(null);
       setErrorMessage('Informe uma matrícula para buscar.');
       return;
     }
 
     setIsLoading(true);
 
-    const [detailsResponse, historicalResponse] = await Promise.all([
+    const [detailsResponse, consolidatedResponse, historicalResponse] = await Promise.all([
       fetch(`/api/aircraft/${encodeURIComponent(marca)}`, { cache: 'no-store' }),
+      fetch(`/api/aircraft/${encodeURIComponent(marca)}/consolidated`, { cache: 'no-store' }),
       (async () => {
         const supabase = getSupabaseClient();
         if (!supabase) {
@@ -59,12 +63,22 @@ export default function HomePage() {
     if (!detailsResponse.ok) {
       setRecords([]);
       setAircraftSnapshot(null);
+      setConsolidatedSnapshot(null);
       setErrorMessage('Não foi possível consultar os dados detalhados no momento. Tente novamente em instantes.');
       return;
     }
 
     const detailsData = (await detailsResponse.json()) as AircraftRabSnapshot;
     setAircraftSnapshot(detailsData);
+
+    if (!consolidatedResponse.ok) {
+      setConsolidatedSnapshot(null);
+      setErrorMessage('Dados atuais carregados, mas não foi possível montar o consolidado agora.');
+      return;
+    }
+
+    const consolidatedData = (await consolidatedResponse.json()) as AircraftConsolidatedSnapshot;
+    setConsolidatedSnapshot(consolidatedData);
 
     if (historicalResponse.error) {
       setRecords([]);
@@ -91,6 +105,7 @@ export default function HomePage() {
       {hasSearched && !errorMessage && aircraftSnapshot && (
         <>
           <AircraftRabDetails snapshot={aircraftSnapshot} />
+          <AircraftConsolidated snapshot={consolidatedSnapshot} />
           <AircraftTransactions transactions={transactions} />
           <AircraftHistory records={records} />
         </>
