@@ -19,23 +19,38 @@ function extractJetPhotosUrls(html: string) {
   return Array.from(new Set(matches));
 }
 
-async function fetchJetPhotosPage(url: string) {
-  const response = await fetch(url, {
-    cache: 'no-store',
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-      'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-    },
-  });
+type JetPhotosAttemptResult = {
+  status: number | null;
+  photos: string[];
+};
 
-  if (!response.ok) {
-    throw new Error(`JetPhotos retornou ${response.status}`);
+async function fetchJetPhotosPage(url: string): Promise<JetPhotosAttemptResult> {
+  try {
+    const response = await fetch(url, {
+      cache: 'no-store',
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+        Referer: 'https://www.jetphotos.com/',
+      },
+      signal: AbortSignal.timeout(9000),
+    });
+
+    const html = await response.text();
+
+    if (!response.ok) {
+      const snippet = html.slice(0, 180).replace(/\s+/g, ' ');
+      console.warn(`[jetphotos] non-200 status=${response.status} url=${url} snippet="${snippet}"`);
+      return { status: response.status, photos: [] };
+    }
+
+    return { status: response.status, photos: extractJetPhotosUrls(html) };
+  } catch (error) {
+    console.error(`[jetphotos] request failed url=${url}`, error);
+    return { status: null, photos: [] };
   }
-
-  const html = await response.text();
-  return extractJetPhotosUrls(html);
 }
 
 export async function GET(request: Request, { params }: { params: Promise<{ registration: string }> }) {
@@ -47,12 +62,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ regi
     return NextResponse.json({ error: 'Matrícula inválida.' }, { status: 400 });
   }
 
-  const registrationUrl = `https://www.jetphotos.com/registration/${encodeURIComponent(normalizedRegistration)}`;
+  const registrationCandidates = Array.from(new Set([normalizedRegistration, normalizedRegistration.replace(/-/g, '')]));
+  const registrationUrls = registrationCandidates.map(
+    (value) => `https://www.jetphotos.com/registration/${encodeURIComponent(value)}`,
+  );
 
-  try {
-    const registrationPhotos = await fetchJetPhotosPage(registrationUrl);
+  console.info(`[jetphotos] lookup start registration=${normalizedRegistration} model=${modelParam || '-'}`);
 
-    if (registrationPhotos.length > 0) {
+  for (const registrationUrl of registrationUrls) {
+    const attempt = await fetchJetPhotosPage(registrationUrl);
+
+    if (attempt.photos.length > 0) {
       return NextResponse.json({
         registration: normalizedRegistration,
         searchedModel: null,
@@ -60,40 +80,55 @@ export async function GET(request: Request, { params }: { params: Promise<{ regi
         warning: null,
         sourceUrl: registrationUrl,
         credits: 'Fotos: JetPhotos.com',
-        photos: registrationPhotos,
+        photos: attempt.photos,
       });
     }
 
-    if (!modelParam) {
-      return NextResponse.json({
-        registration: normalizedRegistration,
-        searchedModel: null,
-        source: 'registration',
-        warning: null,
-        sourceUrl: registrationUrl,
-        credits: 'Fotos: JetPhotos.com',
-        photos: [],
-      });
-    }
+    console.info(`[jetphotos] registration attempt done url=${registrationUrl} status=${attempt.status} photos=${attempt.photos.length}`);
+  }
 
-    const modelUrl = `https://www.jetphotos.com/photo/keyword/${encodeURIComponent(modelParam)}`;
-    const modelPhotos = await fetchJetPhotosPage(modelUrl);
-
+  if (!modelParam) {
     return NextResponse.json({
       registration: normalizedRegistration,
-      searchedModel: modelParam,
-      source: 'model',
-      warning: 'nao encontrado fotos dessa aeronave, mostrando similares',
-      sourceUrl: modelUrl,
+      searchedModel: null,
+      source: 'registration',
+      warning: null,
+      sourceUrl: registrationUrls[0],
       credits: 'Fotos: JetPhotos.com',
-      photos: modelPhotos,
+      photos: [],
     });
-  } catch {
-    return NextResponse.json(
-      {
-        error: 'Não foi possível consultar fotos no JetPhotos no momento.',
-      },
-      { status: 502 },
-    );
   }
+
+  const modelUrls = [
+    `https://www.jetphotos.com/photo/keyword/${encodeURIComponent(modelParam)}`,
+    `https://www.jetphotos.com/keyword/${encodeURIComponent(modelParam)}`,
+  ];
+
+  for (const modelUrl of modelUrls) {
+    const attempt = await fetchJetPhotosPage(modelUrl);
+
+    if (attempt.photos.length > 0) {
+      return NextResponse.json({
+        registration: normalizedRegistration,
+        searchedModel: modelParam,
+        source: 'model',
+        warning: 'nao encontrado fotos dessa aeronave, mostrando similares',
+        sourceUrl: modelUrl,
+        credits: 'Fotos: JetPhotos.com',
+        photos: attempt.photos,
+      });
+    }
+
+    console.info(`[jetphotos] model attempt done url=${modelUrl} status=${attempt.status} photos=${attempt.photos.length}`);
+  }
+
+  return NextResponse.json({
+    registration: normalizedRegistration,
+    searchedModel: modelParam,
+    source: 'model',
+    warning: 'nao encontrado fotos dessa aeronave, mostrando similares',
+    sourceUrl: modelUrls[0],
+    credits: 'Fotos: JetPhotos.com',
+    photos: [],
+  });
 }
