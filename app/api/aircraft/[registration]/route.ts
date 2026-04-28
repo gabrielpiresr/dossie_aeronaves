@@ -1,7 +1,41 @@
 import { NextResponse } from 'next/server';
-import { extractDetailLinksFromSearchHtml, extractFieldsFromRabHtml, extractSearchTimestamp } from '@/utils/rabParser';
+import { createClient } from '@supabase/supabase-js';
+import type { AircraftDetailField } from '@/types/aircraft';
 
-const RAB_BASE_URL = 'https://aeronaves.anac.gov.br/aeronaves';
+const DETAIL_TABLE_NAME = process.env.AIRCRAFT_DETAILS_TABLE_NAME ?? 'detailed_aircrafts_info';
+
+type DetailedAircraftRow = {
+  marcas: string;
+  proprietarios: string | null;
+  operadores: string | null;
+  nr_cert_matricula: string | null;
+  nr_serie: string | null;
+  cd_tipo: string | null;
+  ds_modelo: string | null;
+  nm_fabricante: string | null;
+  cd_cls: string | null;
+  nr_pmd: string | null;
+  cd_tipo_icao: string | null;
+  nr_tripulacao_min: string | null;
+  nr_passageiros_max: string | null;
+  nr_assentos: string | null;
+  nr_ano_fabricacao: string | null;
+  dt_validade_cva: string | null;
+  dt_validade_ca: string | null;
+  dt_canc: string | null;
+  ds_motivo_canc: string | null;
+  cd_interdicao: string | null;
+  ds_gravame: string | null;
+  dt_matricula: string | null;
+  tp_motor: string | null;
+  qt_motor: string | null;
+  tp_pouso: string | null;
+  tp_ca: string | null;
+  cd_proposito_cave: string | null;
+  cf_operacional: string | null;
+  ds_categoria_homologacao: string | null;
+  tp_operacao: string | null;
+};
 
 function normalizeRegistration(registration: string) {
   const normalized = registration.trim().toUpperCase().replace(/\s+/g, '').replace(/_/g, '-');
@@ -10,7 +44,6 @@ function normalizeRegistration(registration: string) {
     return normalized;
   }
 
-  // Ex.: PULRO -> PU-LRO
   if (/^[A-Z]{2}[A-Z0-9]{3,4}$/.test(normalized)) {
     return `${normalized.slice(0, 2)}-${normalized.slice(2)}`;
   }
@@ -18,135 +51,111 @@ function normalizeRegistration(registration: string) {
   return normalized;
 }
 
-function buildSearchUrl(registration: string) {
-  const params = new URLSearchParams({
-    tipo_pesquisa: 'marcas',
-    textMarca: registration,
-    selectHabilitacao: '',
-    selectIcao: '',
-    selectModelo: '',
-    selectFabricante: '',
-    textNumeroSerie: '',
-  });
+function buildRegistrationCandidates(registration: string) {
+  const raw = registration.trim().toUpperCase().replace(/\s+/g, '').replace(/_/g, '-');
+  const normalized = normalizeRegistration(registration);
+  const withoutHyphen = raw.replace(/-/g, '');
 
-  return `${RAB_BASE_URL}/cons_rab_resposta2.asp?${params.toString()}`;
+  return Array.from(new Set([raw, normalized, withoutHyphen]));
 }
 
-function buildDirectUrl(registration: string) {
-  const params = new URLSearchParams({
-    tipo_pesquisa: 'marcas',
-    textMarca: registration,
-  });
+function resolveSupabaseClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  return `${RAB_BASE_URL}/cons_rab_resposta.asp?${params.toString()}`;
-}
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return null;
+  }
 
-async function fetchPage(url: string) {
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
-      Referer: `${RAB_BASE_URL}/cons_rab.asp`,
-      Origin: 'https://aeronaves.anac.gov.br',
+  return createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
     },
-    redirect: 'follow',
-    cache: 'no-store',
   });
-
-  if (!response.ok) {
-    throw new Error(`Falha ao consultar ANAC (HTTP ${response.status}).`);
-  }
-
-  const buffer = await response.arrayBuffer();
-  const bytes = new Uint8Array(buffer);
-
-  const utf8Text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-  const declaredLatin1 = /charset\s*=\s*(iso-8859-1|latin1)/i.test(response.headers.get('content-type') ?? '') || /<meta[^>]+charset=\s*["']?(iso-8859-1|latin1)/i.test(utf8Text);
-
-  const html = declaredLatin1 ? new TextDecoder('latin1').decode(bytes) : utf8Text;
-
-  return {
-    html,
-    finalUrl: response.url,
-  };
 }
 
-async function resolveRabDetails(searchUrl: string, directUrl: string) {
-  const visited = new Set<string>();
-  const queue = [searchUrl, directUrl];
+function buildFields(row: DetailedAircraftRow): AircraftDetailField[] {
+  const fieldMapping: Array<[label: string, value: string | null]> = [
+    ['Proprietários', row.proprietarios],
+    ['Operadores', row.operadores],
+    ['Certificado de Matrícula', row.nr_cert_matricula],
+    ['Número de Série', row.nr_serie],
+    ['Código do Tipo', row.cd_tipo],
+    ['Modelo', row.ds_modelo],
+    ['Fabricante', row.nm_fabricante],
+    ['Classe', row.cd_cls],
+    ['PMD', row.nr_pmd],
+    ['Tipo ICAO', row.cd_tipo_icao],
+    ['Tripulação Mínima', row.nr_tripulacao_min],
+    ['Passageiros Máximos', row.nr_passageiros_max],
+    ['Assentos', row.nr_assentos],
+    ['Ano de Fabricação', row.nr_ano_fabricacao],
+    ['Validade CVA', row.dt_validade_cva],
+    ['Validade CA', row.dt_validade_ca],
+    ['Data de Cancelamento', row.dt_canc],
+    ['Motivo do Cancelamento', row.ds_motivo_canc],
+    ['Interdição', row.cd_interdicao],
+    ['Gravame', row.ds_gravame],
+    ['Data da Matrícula', row.dt_matricula],
+    ['Tipo de Motor', row.tp_motor],
+    ['Quantidade de Motores', row.qt_motor],
+    ['Tipo de Pouso', row.tp_pouso],
+    ['Tipo de CA', row.tp_ca],
+    ['Propósito CAVE', row.cd_proposito_cave],
+    ['CF Operacional', row.cf_operacional],
+    ['Categoria de Homologação', row.ds_categoria_homologacao],
+    ['Tipo de Operação', row.tp_operacao],
+  ];
 
-  while (queue.length > 0) {
-    const url = queue.shift();
-
-    if (!url || visited.has(url)) {
-      continue;
-    }
-
-    visited.add(url);
-
-    try {
-      const { html, finalUrl } = await fetchPage(url);
-      const fields = extractFieldsFromRabHtml(html);
-
-      if (fields.length > 0) {
-        return { html, sourceUrl: finalUrl };
-      }
-
-      const links = extractDetailLinksFromSearchHtml(html, RAB_BASE_URL);
-      for (const link of links) {
-        if (!visited.has(link)) {
-          queue.push(link);
-        }
-      }
-    } catch {
-      // segue para os próximos candidatos
-    }
-  }
-
-  return null;
+  return fieldMapping
+    .filter(([, value]) => value && value.trim().length > 0)
+    .map(([label, value]) => ({ label, value: value as string }));
 }
 
 export async function GET(_: Request, { params }: { params: Promise<{ registration: string }> }) {
-  try {
-    const { registration } = await params;
-    const normalizedRegistration = normalizeRegistration(registration);
+  const { registration } = await params;
+  const normalizedRegistration = normalizeRegistration(registration);
+  const registrationCandidates = buildRegistrationCandidates(registration);
 
-    if (!normalizedRegistration) {
-      return NextResponse.json({ error: 'Matrícula inválida.' }, { status: 400 });
-    }
+  if (!normalizedRegistration) {
+    return NextResponse.json({ error: 'Matrícula inválida.' }, { status: 400 });
+  }
 
-    const searchUrl = buildSearchUrl(normalizedRegistration);
-    const directUrl = buildDirectUrl(normalizedRegistration);
+  const supabase = resolveSupabaseClient();
+  if (!supabase) {
+    return NextResponse.json({ error: 'Integração com base de aeronaves indisponível.' }, { status: 500 });
+  }
 
-    const rabDetails = await resolveRabDetails(searchUrl, directUrl);
+  const { data, error } = await supabase
+    .from(DETAIL_TABLE_NAME)
+    .select('*')
+    .in('marcas', registrationCandidates)
+    .limit(1)
+    .maybeSingle<DetailedAircraftRow>();
 
-    if (!rabDetails) {
-      return NextResponse.json(
-        {
-          error:
-            'Não foi possível obter dados da ANAC para esta matrícula agora. Tente novamente em instantes.',
-        },
-        { status: 502 },
-      );
-    }
-
-    const fields = extractFieldsFromRabHtml(rabDetails.html);
-
-    return NextResponse.json({
-      marca: normalizedRegistration,
-      consulta_realizada_em: extractSearchTimestamp(rabDetails.html),
-      fonte_url: rabDetails.sourceUrl,
-      campos: fields,
-    });
-  } catch {
+  if (error) {
     return NextResponse.json(
       {
-        error: 'Erro inesperado ao consultar o RAB da ANAC.',
+        error: 'Não foi possível consultar os dados detalhados desta aeronave no momento.',
       },
-      { status: 500 },
+      { status: 502 },
     );
   }
+
+  if (!data) {
+    return NextResponse.json(
+      {
+        error: 'Aeronave não encontrada na base detalhada.',
+      },
+      { status: 404 },
+    );
+  }
+
+  return NextResponse.json({
+    marca: data.marcas ?? normalizedRegistration,
+    consulta_realizada_em: new Date().toISOString(),
+    fonte_url: 'base_interna:detailed_aircrafts_info',
+    campos: buildFields(data),
+  });
 }
