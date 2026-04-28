@@ -51,6 +51,14 @@ function normalizeRegistration(registration: string) {
   return normalized;
 }
 
+function buildRegistrationCandidates(registration: string) {
+  const raw = registration.trim().toUpperCase().replace(/\s+/g, '').replace(/_/g, '-');
+  const normalized = normalizeRegistration(registration);
+  const withoutHyphen = raw.replace(/-/g, '');
+
+  return Array.from(new Set([raw, normalized, withoutHyphen]));
+}
+
 function resolveSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -108,6 +116,7 @@ function buildFields(row: DetailedAircraftRow): AircraftDetailField[] {
 export async function GET(_: Request, { params }: { params: Promise<{ registration: string }> }) {
   const { registration } = await params;
   const normalizedRegistration = normalizeRegistration(registration);
+  const registrationCandidates = buildRegistrationCandidates(registration);
 
   if (!normalizedRegistration) {
     return NextResponse.json({ error: 'Matrícula inválida.' }, { status: 400 });
@@ -121,7 +130,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
   const { data, error } = await supabase
     .from(DETAIL_TABLE_NAME)
     .select('*')
-    .eq('marcas', normalizedRegistration)
+    .in('marcas', registrationCandidates)
+    .limit(1)
     .maybeSingle<DetailedAircraftRow>();
 
   if (error) {
@@ -143,7 +153,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
   }
 
   return NextResponse.json({
-    marca: normalizedRegistration,
+    marca: data.marcas ?? normalizedRegistration,
     consulta_realizada_em: new Date().toISOString(),
     fonte_url: 'base_interna:detailed_aircrafts_info',
     campos: buildFields(data),
