@@ -35,12 +35,15 @@ export default function BrazilMapChart({ data, title, height = 420 }: BrazilMapC
   const max = Math.max(...data.map((item) => item.total), 0);
 
   const mapData = useMemo(
-    () =>
-      data.map((item) => ({
-        name: item.estado,
-        value: item.total,
-        fullName: stateNameByUf[item.estado] ?? item.estado,
-      })),
+    () => {
+      const totalsByState = new Map(data.map((item) => [item.estado.toUpperCase(), item.total]));
+
+      return Object.keys(stateNameByUf).map((uf) => ({
+        name: uf,
+        value: totalsByState.get(uf) ?? 0,
+        fullName: stateNameByUf[uf] ?? uf,
+      }));
+    },
     [data],
   );
 
@@ -117,7 +120,7 @@ export default function BrazilMapChart({ data, title, height = 420 }: BrazilMapC
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <h4 className="text-sm font-semibold text-slate-800">{title}</h4>
-      <ReactECharts option={option} style={{ height, width: '100%' }} opts={{ renderer: 'svg' }} />
+      <ReactECharts option={option} style={{ height, width: '100%' }} opts={{ renderer: 'canvas' }} />
     </div>
   );
 }

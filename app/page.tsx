@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
 import AircraftConsolidated from '@/components/AircraftConsolidated';
 import AircraftCurrentAircraftOccurrences from '@/components/AircraftCurrentAircraftOccurrences';
+import AircraftOperatorFleet from '@/components/AircraftOperatorFleet';
 import AircraftRabDetails from '@/components/AircraftRabDetails';
 import AircraftSearch from '@/components/AircraftSearch';
 import AircraftTransactions from '@/components/AircraftTransactions';
@@ -142,8 +143,9 @@ export default function HomePage() {
         <>
           <AircraftRabDetails snapshot={aircraftSnapshot} />
           <AircraftCurrentAircraftOccurrences snapshot={consolidatedSnapshot} />
-          <AircraftConsolidated snapshot={consolidatedSnapshot} viewMode={searchMode} />
           <AircraftTransactions transactions={transactions} isLoading={isLoading} />
+          <AircraftOperatorFleet snapshot={consolidatedSnapshot} />
+          <AircraftConsolidated snapshot={consolidatedSnapshot} viewMode={searchMode} />
         </>
       )}
 

@@ -155,6 +155,23 @@ function parseBrazilStateFromOperator(operator: string | null) {
   return candidate;
 }
 
+function parseOperatorNames(value: string | null) {
+  const chunks = (value ?? '')
+    .split('|')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const operators: string[] = [];
+
+  for (let i = 0; i < chunks.length; i += 4) {
+    const name = chunks[i];
+    if (name) {
+      operators.push(name);
+    }
+  }
+
+  return Array.from(new Set(operators));
+}
+
 function dateFromUnknownFormat(value: string) {
   const trimmed = value.trim();
 
@@ -376,6 +393,20 @@ function buildConsolidation(rows: DetailedAircraftRow[], transactions: Transacti
   };
 }
 
+function toRegisteredAircraftRow(row: DetailedAircraftRow) {
+  return {
+    marca: row.marcas,
+    fabricante: row.nm_fabricante?.trim() || 'Não informado',
+    modelo: row.ds_modelo?.trim() || 'Não informado',
+    ano_fabricacao: normalizeYear(row.nr_ano_fabricacao),
+    tipo_icao: row.cd_tipo_icao?.trim() || 'Não informado',
+    categoria: row.ds_categoria_homologacao?.trim() || 'Não informado',
+    tipo_motor: row.tp_motor?.trim() || 'Não informado',
+    quantidade_motores: row.qt_motor?.trim() || 'Não informado',
+    estado_operacao: parseBrazilStateFromOperator(row.operadores) || '-',
+  };
+}
+
 export async function GET(_: Request, { params }: { params: Promise<{ registration: string }> }) {
   const { registration } = await params;
   const normalizedRegistration = normalizeRegistration(registration);
@@ -407,6 +438,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
 
   const fabricante = normalizeText(currentAircraft.nm_fabricante);
   const modelo = normalizeText(currentAircraft.ds_modelo);
+  const operadorPrincipal = parseOperatorNames(currentAircraft.operadores)[0] ?? 'Não informado';
 
   if (!fabricante || !modelo) {
     return NextResponse.json(
@@ -417,9 +449,10 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
 
   let manufacturerRows: DetailedAircraftRow[] = [];
   let modelRows: DetailedAircraftRow[] = [];
+  let operatorRows: DetailedAircraftRow[] = [];
 
   try {
-    [manufacturerRows, modelRows] = await Promise.all([
+    [manufacturerRows, modelRows, operatorRows] = await Promise.all([
       fetchAllPages<DetailedAircraftRow>(async (from, to) => {
         const { data, error } = await supabase
           .from(DETAIL_TABLE_NAME)
@@ -438,6 +471,17 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
 
         return { data: (data as DetailedAircraftRow[] | null) ?? [], error };
       }),
+      operadorPrincipal === 'Não informado'
+        ? Promise.resolve([] as DetailedAircraftRow[])
+        : fetchAllPages<DetailedAircraftRow>(async (from, to) => {
+            const { data, error } = await supabase
+              .from(DETAIL_TABLE_NAME)
+              .select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, operadores, cd_tipo_icao, ds_categoria_homologacao, tp_motor, qt_motor')
+              .ilike('operadores', `%${operadorPrincipal}%`)
+              .range(from, to);
+
+            return { data: (data as DetailedAircraftRow[] | null) ?? [], error };
+          }),
     ]);
   } catch {
     return NextResponse.json({ error: 'Falha ao consultar dados consolidados de fabricante/modelo.' }, { status: 502 });
@@ -523,17 +567,11 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
     modelo_consolidado: {
       ...buildConsolidation(modelRows, modelTransactions, modelIncidents),
       aeronaves_registradas_atualmente: modelMarcas.sort((a, b) => a.localeCompare(b)),
-      aeronaves_registradas_detalhes: modelRows.map((row) => ({
-        marca: row.marcas,
-        fabricante: row.nm_fabricante?.trim() || 'Não informado',
-        modelo: row.ds_modelo?.trim() || 'Não informado',
-        ano_fabricacao: normalizeYear(row.nr_ano_fabricacao),
-        tipo_icao: row.cd_tipo_icao?.trim() || 'Não informado',
-        categoria: row.ds_categoria_homologacao?.trim() || 'Não informado',
-        tipo_motor: row.tp_motor?.trim() || 'Não informado',
-        quantidade_motores: row.qt_motor?.trim() || 'Não informado',
-        estado_operacao: parseBrazilStateFromOperator(row.operadores) || '-',
-      })),
+      aeronaves_registradas_detalhes: modelRows.map(toRegisteredAircraftRow),
+    },
+    operador_consolidado: {
+      operador_principal: operadorPrincipal,
+      aeronaves_registradas_detalhes: Array.from(new Map(operatorRows.map((row) => [row.marcas, toRegisteredAircraftRow(row)])).values()),
     },
   };
 
