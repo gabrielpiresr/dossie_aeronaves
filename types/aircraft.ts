@@ -30,6 +30,16 @@ export type AircraftRabSnapshot = {
   campos: AircraftDetailField[];
 };
 
+export type AircraftPhotoSnapshot = {
+  registration: string;
+  searchedModel: string | null;
+  source: 'registration' | 'model';
+  warning: string | null;
+  sourceUrl: string;
+  credits: string;
+  photos: string[];
+};
+
 export type DistributionItem = {
   label: string;
   total: number;
