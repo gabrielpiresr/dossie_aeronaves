@@ -53,6 +53,10 @@ type DetailedAircraftRow = {
   ds_modelo: string | null;
   nr_ano_fabricacao: string | null;
   operadores: string | null;
+  cd_tipo_icao: string | null;
+  ds_categoria_homologacao: string | null;
+  tp_motor: string | null;
+  qt_motor: string | null;
 };
 
 type TransactionRow = {
@@ -388,7 +392,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
 
   const { data: currentAircraft, error: currentError } = await supabase
     .from(DETAIL_TABLE_NAME)
-    .select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, operadores')
+    .select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, operadores, cd_tipo_icao, ds_categoria_homologacao, tp_motor, qt_motor')
     .in('marcas', registrationCandidates)
     .limit(1)
     .maybeSingle<DetailedAircraftRow>();
@@ -419,7 +423,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
       fetchAllPages<DetailedAircraftRow>(async (from, to) => {
         const { data, error } = await supabase
           .from(DETAIL_TABLE_NAME)
-          .select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, operadores')
+          .select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, operadores, cd_tipo_icao, ds_categoria_homologacao, tp_motor, qt_motor')
           .eq('nm_fabricante', fabricante)
           .range(from, to);
 
@@ -428,7 +432,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
       fetchAllPages<DetailedAircraftRow>(async (from, to) => {
         const { data, error } = await supabase
           .from(DETAIL_TABLE_NAME)
-          .select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, operadores')
+          .select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, operadores, cd_tipo_icao, ds_categoria_homologacao, tp_motor, qt_motor')
           .eq('ds_modelo', modelo)
           .range(from, to);
 
@@ -514,10 +518,22 @@ export async function GET(_: Request, { params }: { params: Promise<{ registrati
       historico: aircraftIncidents,
       possui_historico: aircraftHasHistory,
     },
+    ocorrencias_detalhes_modelo: modelIncidents,
     fabricante_consolidado: buildConsolidation(manufacturerRows, manufacturerTransactions, manufacturerIncidents),
     modelo_consolidado: {
       ...buildConsolidation(modelRows, modelTransactions, modelIncidents),
       aeronaves_registradas_atualmente: modelMarcas.sort((a, b) => a.localeCompare(b)),
+      aeronaves_registradas_detalhes: modelRows.map((row) => ({
+        marca: row.marcas,
+        fabricante: row.nm_fabricante?.trim() || 'Não informado',
+        modelo: row.ds_modelo?.trim() || 'Não informado',
+        ano_fabricacao: normalizeYear(row.nr_ano_fabricacao),
+        tipo_icao: row.cd_tipo_icao?.trim() || 'Não informado',
+        categoria: row.ds_categoria_homologacao?.trim() || 'Não informado',
+        tipo_motor: row.tp_motor?.trim() || 'Não informado',
+        quantidade_motores: row.qt_motor?.trim() || 'Não informado',
+        estado_operacao: parseBrazilStateFromOperator(row.operadores) || '-',
+      })),
     },
   };
 
