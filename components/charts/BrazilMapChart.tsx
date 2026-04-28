@@ -97,7 +97,6 @@ export default function BrazilMapChart({ data, title, height = 420 }: BrazilMapC
           shadowColor: 'rgba(30, 41, 59, 0.12)',
         },
         emphasis: {
-          focus: 'self',
           label: {
             color: '#ffffff',
             fontWeight: 'bold',
