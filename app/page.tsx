@@ -1,7 +1,6 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import AircraftHistory from '@/components/AircraftHistory';
 import AircraftSearch from '@/components/AircraftSearch';
 import AircraftTransactions from '@/components/AircraftTransactions';
 import { getSupabaseClient } from '@/lib/supabase';
@@ -71,8 +70,6 @@ export default function HomePage() {
       {errorMessage && (
         <div className="mt-6 w-full rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</div>
       )}
-
-      {hasSearched && !errorMessage && <AircraftHistory records={records} />}
 
       {hasSearched && !errorMessage && records.length > 0 && <AircraftTransactions transactions={transactions} />}
     </main>
