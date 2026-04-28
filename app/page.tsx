@@ -1,14 +1,17 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import AircraftHistory from '@/components/AircraftHistory';
+import AircraftRabDetails from '@/components/AircraftRabDetails';
 import AircraftSearch from '@/components/AircraftSearch';
 import AircraftTransactions from '@/components/AircraftTransactions';
 import { getSupabaseClient } from '@/lib/supabase';
-import type { AircraftRecord } from '@/types/aircraft';
+import type { AircraftRabSnapshot, AircraftRecord } from '@/types/aircraft';
 import { detectTransactions } from '@/utils/detectTransactions';
 
 export default function HomePage() {
   const [records, setRecords] = useState<AircraftRecord[]>([]);
+  const [rabSnapshot, setRabSnapshot] = useState<AircraftRabSnapshot | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -21,47 +24,61 @@ export default function HomePage() {
 
     if (!marca) {
       setRecords([]);
+      setRabSnapshot(null);
       setErrorMessage('Informe uma matrícula para buscar.');
-      return;
-    }
-
-    const supabase = getSupabaseClient();
-    if (!supabase) {
-      setRecords([]);
-      setErrorMessage('Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY para realizar a busca.');
-      return;
-    }
-
-    const tableName = process.env.NEXT_PUBLIC_AIRCRAFT_TABLE_NAME;
-    if (!tableName) {
-      setRecords([]);
-      setErrorMessage('Configure NEXT_PUBLIC_AIRCRAFT_TABLE_NAME para realizar a busca.');
       return;
     }
 
     setIsLoading(true);
 
-    const { data, error } = await supabase
-      .from(tableName)
-      .select('data_registro, marca, proprietario, operador')
-      .eq('marca', marca)
-      .order('data_registro', { ascending: true });
+    const [rabResponse, historicalResponse] = await Promise.all([
+      fetch(`/api/aircraft/${encodeURIComponent(marca)}`, { cache: 'no-store' }),
+      (async () => {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+          return { data: null as AircraftRecord[] | null, error: null };
+        }
+
+        const tableName = process.env.NEXT_PUBLIC_AIRCRAFT_TABLE_NAME;
+        if (!tableName) {
+          return { data: null as AircraftRecord[] | null, error: null };
+        }
+
+        const { data, error } = await supabase
+          .from(tableName)
+          .select('data_registro, marca, proprietario, operador')
+          .eq('marca', marca)
+          .order('data_registro', { ascending: true });
+
+        return { data: (data as AircraftRecord[]) ?? [], error };
+      })(),
+    ]);
 
     setIsLoading(false);
 
-    if (error) {
+    if (!rabResponse.ok) {
       setRecords([]);
-      setErrorMessage('Não foi possível buscar o histórico agora. Tente novamente em instantes.');
+      setRabSnapshot(null);
+      setErrorMessage('Não foi possível consultar a ANAC no momento. Tente novamente em instantes.');
       return;
     }
 
-    setRecords((data as AircraftRecord[]) ?? []);
+    const rabData = (await rabResponse.json()) as AircraftRabSnapshot;
+    setRabSnapshot(rabData);
+
+    if (historicalResponse.error) {
+      setRecords([]);
+      setErrorMessage('Dados atuais carregados, mas não foi possível consultar o histórico de negociações agora.');
+      return;
+    }
+
+    setRecords(historicalResponse.data ?? []);
   };
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-4xl flex-col items-center px-6 py-20">
-      <h1 className="text-3xl font-bold tracking-tight text-slate-900">Histórico de Aeronaves</h1>
-      <p className="mt-3 text-sm text-slate-600">Digite uma matrícula para iniciar a consulta.</p>
+    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col items-center px-6 py-20">
+      <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dossiê de Aeronaves</h1>
+      <p className="mt-3 text-sm text-slate-600">Consulte dados atuais no RAB (ANAC) e negociações passadas por matrícula.</p>
 
       <div className="mt-8 w-full max-w-xl">
         <AircraftSearch isLoading={isLoading} onSearch={handleSearch} />
@@ -71,7 +88,13 @@ export default function HomePage() {
         <div className="mt-6 w-full rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</div>
       )}
 
-      {hasSearched && !errorMessage && records.length > 0 && <AircraftTransactions transactions={transactions} />}
+      {hasSearched && !errorMessage && rabSnapshot && (
+        <>
+          <AircraftRabDetails snapshot={rabSnapshot} />
+          <AircraftTransactions transactions={transactions} />
+          <AircraftHistory records={records} />
+        </>
+      )}
     </main>
   );
 }
