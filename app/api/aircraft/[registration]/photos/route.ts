@@ -37,7 +37,12 @@ type JetPhotosAttemptResult = {
 };
 
 function buildFetchCandidates(url: string) {
-  return [url, `https://r.jina.ai/http://${url.replace(/^https?:\/\//, '')}`];
+  const encodedUrl = encodeURIComponent(url);
+  return [
+    url,
+    `https://r.jina.ai/http://${url.replace(/^https?:\/\//, '')}`,
+    `https://api.allorigins.win/raw?url=${encodedUrl}`,
+  ];
 }
 
 async function fetchJetPhotosPage(url: string): Promise<JetPhotosAttemptResult> {
@@ -58,7 +63,7 @@ async function fetchJetPhotosPage(url: string): Promise<JetPhotosAttemptResult> 
 
     if (!response.ok) {
       const snippet = html.slice(0, 180).replace(/\s+/g, ' ');
-      console.warn(`[jetphotos] non-200 status=${response.status} url=${url} snippet="${snippet}"`);
+      console.info(`[jetphotos] non-200 status=${response.status} url=${url} snippet="${snippet}"`);
       return { status: response.status, photos: [] };
     }
 
