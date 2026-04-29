@@ -1,34 +1,49 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import AircraftConsolidated from '@/components/AircraftConsolidated';
 import AircraftCurrentAircraftOccurrences from '@/components/AircraftCurrentAircraftOccurrences';
 import AircraftOperatorFleet from '@/components/AircraftOperatorFleet';
+import AircraftPhotos from '@/components/AircraftPhotos';
 import AircraftRabDetails from '@/components/AircraftRabDetails';
 import AircraftSearch from '@/components/AircraftSearch';
 import AircraftTransactions from '@/components/AircraftTransactions';
 import { getSupabaseClient } from '@/lib/supabase';
-import type { AircraftConsolidatedSnapshot, AircraftRabSnapshot, DetectedTransaction, SearchMode } from '@/types/aircraft';
+import type {
+  AircraftConsolidatedSnapshot,
+  AircraftPhotoSnapshot,
+  AircraftRabSnapshot,
+  DetectedTransaction,
+  SearchMode,
+} from '@/types/aircraft';
 
 export default function HomePage() {
   const [transactions, setTransactions] = useState<DetectedTransaction[]>([]);
   const [aircraftSnapshot, setAircraftSnapshot] = useState<AircraftRabSnapshot | null>(null);
   const [consolidatedSnapshot, setConsolidatedSnapshot] = useState<AircraftConsolidatedSnapshot | null>(null);
+  const [photoSnapshot, setPhotoSnapshot] = useState<AircraftPhotoSnapshot | null>(null);
   const [searchMode, setSearchMode] = useState<SearchMode>('matricula');
   const [isLoading, setIsLoading] = useState(false);
+  const [isPhotosLoading, setIsPhotosLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const searchRequestIdRef = useRef(0);
 
   const handleSearch = useCallback(async (term: string, mode: SearchMode) => {
     setHasSearched(true);
+    const requestId = Date.now();
+    searchRequestIdRef.current = requestId;
     setSearchMode(mode);
     setErrorMessage('');
     setTransactions([]);
+    setPhotoSnapshot(null);
+    setIsPhotosLoading(false);
 
     if (!term) {
       setAircraftSnapshot(null);
       setConsolidatedSnapshot(null);
+      setPhotoSnapshot(null);
       setErrorMessage('Informe um valor para buscar.');
       return;
     }
@@ -46,12 +61,15 @@ export default function HomePage() {
         setIsLoading(false);
         setAircraftSnapshot(null);
         setConsolidatedSnapshot(null);
+        setPhotoSnapshot(null);
         setErrorMessage('Não foi possível consultar os dados detalhados no momento.');
         return;
       }
 
-      setAircraftSnapshot((await detailsResponse.json()) as AircraftRabSnapshot);
+      const detailsSnapshot = (await detailsResponse.json()) as AircraftRabSnapshot;
+      setAircraftSnapshot(detailsSnapshot);
       setConsolidatedSnapshot(consolidatedResponse.ok ? ((await consolidatedResponse.json()) as AircraftConsolidatedSnapshot) : null);
+      const modelField = detailsSnapshot.campos.find((field) => field.label === 'Modelo')?.value ?? '';
 
       if (supabase) {
         const tableName = process.env.NEXT_PUBLIC_AIRCRAFT_TRANSACTIONS_TABLE_NAME ?? 'history_transactions_cache';
@@ -65,10 +83,25 @@ export default function HomePage() {
       }
 
       setIsLoading(false);
+      setIsPhotosLoading(true);
+      void fetch(`/api/aircraft/${encodeURIComponent(term)}/photos?model=${encodeURIComponent(modelField)}`, { cache: 'no-store' })
+        .then(async (photosResponse) => {
+          if (searchRequestIdRef.current !== requestId) {
+            return;
+          }
+          setPhotoSnapshot(photosResponse.ok ? ((await photosResponse.json()) as AircraftPhotoSnapshot) : null);
+        })
+        .finally(() => {
+          if (searchRequestIdRef.current === requestId) {
+            setIsPhotosLoading(false);
+          }
+        });
       return;
     }
 
     setAircraftSnapshot(null);
+    setPhotoSnapshot(null);
+    setIsPhotosLoading(false);
     if (!supabase) {
       setIsLoading(false);
       setErrorMessage('Integração com base indisponível para este tipo de busca.');
@@ -142,6 +175,7 @@ export default function HomePage() {
       {hasSearched && !errorMessage && (
         <>
           <AircraftRabDetails snapshot={aircraftSnapshot} />
+          <AircraftPhotos snapshot={photoSnapshot} isLoading={isPhotosLoading} />
           <AircraftCurrentAircraftOccurrences snapshot={consolidatedSnapshot} />
           <AircraftTransactions transactions={transactions} isLoading={isLoading} />
           <AircraftOperatorFleet snapshot={consolidatedSnapshot} />
