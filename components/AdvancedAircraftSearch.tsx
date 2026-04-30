@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 type Row = Record<string, string | number | null>;
 
@@ -13,6 +13,22 @@ type ResponsePayload = {
 const BR_UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
 
 const DEFAULT_COLUMNS = ['marcas', 'nm_fabricante', 'ds_modelo', 'nr_ano_fabricacao', 'sg_uf', 'qtd_negociacoes'];
+const COLUMN_LABELS: Record<string, string> = {
+  marcas: 'Matrícula',
+  nm_fabricante: 'Fabricante',
+  ds_modelo: 'Modelo',
+  nr_ano_fabricacao: 'Ano de fabricação',
+  sg_uf: 'UF',
+  qtd_negociacoes: 'Qtd. negociações',
+  proprietario_nome: 'Proprietário (nome)',
+  proprietario_documento: 'Proprietário (documento)',
+  proprietario_percentual_cota: 'Proprietário (% cota)',
+  proprietario_estado: 'Proprietário (UF)',
+  operador_nome: 'Operador (nome)',
+  operador_documento: 'Operador (documento)',
+  operador_percentual_cota: 'Operador (% cota)',
+  operador_estado: 'Operador (UF)',
+};
 
 export default function AdvancedAircraftSearch() {
   const [fabricantes, setFabricantes] = useState<string[]>([]);
@@ -36,6 +52,9 @@ export default function AdvancedAircraftSearch() {
   const [fabricanteBusca, setFabricanteBusca] = useState('');
   const [modeloBusca, setModeloBusca] = useState('');
   const [columnBusca, setColumnBusca] = useState('');
+  const fabricantesRef = useRef<HTMLDivElement | null>(null);
+  const modelosRef = useRef<HTMLDivElement | null>(null);
+  const columnsRef = useRef<HTMLDivElement | null>(null);
 
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -64,6 +83,17 @@ export default function AdvancedAircraftSearch() {
       .finally(() => setLoading(false));
   }, [queryParams]);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (openFabricantes && fabricantesRef.current && !fabricantesRef.current.contains(target)) setOpenFabricantes(false);
+      if (openModelos && modelosRef.current && !modelosRef.current.contains(target)) setOpenModelos(false);
+      if (openColumns && columnsRef.current && !columnsRef.current.contains(target)) setOpenColumns(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [openColumns, openFabricantes, openModelos]);
+
   const columns = useMemo(() => Array.from(new Set(rows.flatMap((r) => Object.keys(r)))), [rows]);
   const fabricantesFiltrados = useMemo(
     () => fabricantes.filter((f) => f.toLowerCase().includes(fabricanteBusca.toLowerCase())),
@@ -82,12 +112,12 @@ export default function AdvancedAircraftSearch() {
     <section className="mt-8 w-full rounded-md border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-900">Busca Avançada</h2>
       <div className="mt-4 grid gap-4 md:grid-cols-4">
-        <div className="relative">
+        <div className="relative" ref={fabricantesRef}>
           <button className="w-full rounded border p-2 text-left text-sm" onClick={() => setOpenFabricantes((v) => !v)} type="button">Fabricantes</button>
           <div className="mt-1 flex flex-wrap gap-1">{selectedFabricantes.map((item) => <span key={item} className="rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-800">{item}</span>)}</div>
           {openFabricantes && <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded border bg-white p-2 shadow"><input className="mb-2 w-full rounded border p-1 text-xs" placeholder="Buscar fabricante..." value={fabricanteBusca} onChange={(e) => setFabricanteBusca(e.target.value)} />{fabricantesFiltrados.map((f) => <label key={f} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedFabricantes.includes(f)} onChange={() => { setSelectedFabricantes((prev) => prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]); setSelectedModelos([]); setPage(1); }} />{f}</label>)}</div>}
         </div>
-        <div className="relative">
+        <div className="relative" ref={modelosRef}>
           <button className="w-full rounded border p-2 text-left text-sm" onClick={() => setOpenModelos((v) => !v)} type="button">Modelos</button>
           <div className="mt-1 flex flex-wrap gap-1">{selectedModelos.map((item) => <span key={item} className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">{item}</span>)}</div>
           {openModelos && <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded border bg-white p-2 shadow"><input className="mb-2 w-full rounded border p-1 text-xs" placeholder="Buscar modelo..." value={modeloBusca} onChange={(e) => setModeloBusca(e.target.value)} />{modelosFiltrados.map((m) => <label key={m} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedModelos.includes(m)} onChange={() => { setSelectedModelos((prev) => prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]); setPage(1); }} />{m}</label>)}</div>}
@@ -101,10 +131,10 @@ export default function AdvancedAircraftSearch() {
       </div>
 
       {columns.length > 0 && (
-        <div className="relative mt-4 max-w-md">
+        <div className="relative mt-4 max-w-md" ref={columnsRef}>
           <button className="w-full rounded border p-2 text-left text-sm" onClick={() => setOpenColumns((v) => !v)} type="button">Colunas exibidas</button>
-          <div className="mt-1 flex flex-wrap gap-1">{visibleColumns.map((item) => <span key={item} className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-800">{item}</span>)}</div>
-          {openColumns && <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded border bg-white p-2 shadow"><input className="mb-2 w-full rounded border p-1 text-xs" placeholder="Buscar coluna..." value={columnBusca} onChange={(e) => setColumnBusca(e.target.value)} />{columnsFiltradas.map((col) => <label key={col} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={visibleColumns.includes(col)} onChange={() => setVisibleColumns((prev) => prev.includes(col) ? prev.filter((x) => x !== col) : [...prev, col])} />{col}</label>)}</div>}
+          <div className="mt-1 flex flex-wrap gap-1">{visibleColumns.map((item) => <span key={item} className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-800">{COLUMN_LABELS[item] ?? item}</span>)}</div>
+          {openColumns && <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded border bg-white p-2 shadow"><input className="mb-2 w-full rounded border p-1 text-xs" placeholder="Buscar coluna..." value={columnBusca} onChange={(e) => setColumnBusca(e.target.value)} />{columnsFiltradas.map((col) => <label key={col} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={visibleColumns.includes(col)} onChange={() => setVisibleColumns((prev) => prev.includes(col) ? prev.filter((x) => x !== col) : [...prev, col])} />{COLUMN_LABELS[col] ?? col}</label>)}</div>}
         </div>
       )}
 
@@ -115,7 +145,7 @@ export default function AdvancedAircraftSearch() {
               <tr>
                 {visibleColumns.map((col) => (
                   <th key={col} className="cursor-pointer border-b p-2 text-left" onClick={() => { setSortBy(col); setSortOrder(sortBy === col && sortOrder === 'desc' ? 'asc' : 'desc'); }}>
-                    {col}
+                    {COLUMN_LABELS[col] ?? col}
                   </th>
                 ))}
               </tr>
