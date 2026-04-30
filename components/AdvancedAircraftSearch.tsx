@@ -100,6 +100,14 @@ export default function AdvancedAircraftSearch() {
     void fetch(`/api/aircraft/advanced-search?${queryParams}`, { cache: 'no-store' })
       .then((res) => res.json() as Promise<ResponsePayload>)
       .then((payload) => {
+        console.log('[advanced-search][client] payload-summary', {
+          rows: payload.rows?.length ?? 0,
+          total: payload.total ?? 0,
+          hasReport: Boolean(payload.report),
+          reportTotalAeronaves: payload.report?.totalAeronaves ?? 0,
+          totalOcorrencias:
+            (payload.report?.ocorrencias.acidentes ?? 0) + (payload.report?.ocorrencias.incidentesGraves ?? 0),
+        });
         setRows(payload.rows ?? []);
         setTotal(payload.total ?? 0);
         setFabricantes(payload.fabricantes ?? []);

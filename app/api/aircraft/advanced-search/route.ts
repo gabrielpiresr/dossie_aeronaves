@@ -138,6 +138,11 @@ export async function GET(request: NextRequest) {
   const detailsTable = process.env.NEXT_PUBLIC_AIRCRAFT_DETAILS_TABLE_NAME ?? 'detailed_aircrafts_info';
   const transactionsTable = process.env.NEXT_PUBLIC_AIRCRAFT_TRANSACTIONS_TABLE_NAME ?? 'history_transactions_cache';
   const incidentsTable = process.env.AIRCRAFT_INCIDENTS_TABLE_NAME ?? 'aircraft_incidents';
+  const debugEnabled = process.env.ADVANCED_SEARCH_DEBUG === '1';
+  const debugLog = (stage: string, payload: Record<string, unknown>) => {
+    if (!debugEnabled) return;
+    console.log('[advanced-search]', stage, payload);
+  };
 
   const applyBaseFilters = (q: any) => {
     let next = q;
@@ -207,10 +212,14 @@ export async function GET(request: NextRequest) {
 
   const rows = filteredRows.map((row) => ({ ...row, qtd_negociacoes: txMap[String(row.marcas ?? '')] ?? 0 }));
 
-  const { data: reportBaseRows } = await applyBaseFilters(
-    supabase.from(detailsTable).select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, sg_uf').limit(10000),
+  const { data: reportBaseRows, error: reportBaseError } = await applyBaseFilters(
+    supabase
+      .from(detailsTable)
+      .select('marcas, MARCAS, nm_fabricante, NM_FABRICANTE, ds_modelo, DS_MODELO, nr_ano_fabricacao, NR_ANO_FABRICACAO, sg_uf, SG_UF')
+      .limit(10000),
   );
   const reportRowsRaw = (reportBaseRows as RawAircraftRow[] | null) ?? [];
+  debugLog('report-base', { totalRows: reportRowsRaw.length, hasError: Boolean(reportBaseError), error: reportBaseError?.message ?? null });
 
   const reportRows = reportRowsRaw.map((row) => ({
     marca: getFirstStringValue(row, ['marcas', 'MARCAS'], ''),
@@ -239,6 +248,13 @@ export async function GET(request: NextRequest) {
       ...((lowercaseIncidents.data as IncidentRow[] | null) ?? []),
       ...((uppercaseIncidents.data as IncidentRow[] | null) ?? []),
     ];
+    debugLog('incidents-query', {
+      marcasReport: marcasReport.length,
+      lowercaseCount: (lowercaseIncidents.data ?? []).length,
+      uppercaseCount: (uppercaseIncidents.data ?? []).length,
+      lowercaseError: lowercaseIncidents.error?.message ?? null,
+      uppercaseError: uppercaseIncidents.error?.message ?? null,
+    });
   }
 
   const countBy = <T,>(items: T[], getKey: (item: T) => string) => {
@@ -317,6 +333,18 @@ export async function GET(request: NextRequest) {
         .filter(Boolean),
     ),
   );
+
+  debugLog('response-summary', {
+    page,
+    pageSize,
+    total: count ?? 0,
+    rows: rowsWithOccurrences.length,
+    reportRows: reportRows.length,
+    totalOcorrencias: incidentRows.length,
+    acidentes,
+    incidentesGraves,
+    filtros: { fabricantes: fabricantes.length, modelos: modelos.length, estado, anoMin, anoMax },
+  });
 
   return NextResponse.json({
     rows: rowsWithOccurrences,
