@@ -43,37 +43,54 @@ type RowWithOccurrences = NormalizedAircraftRow & {
 
 function parsePeople(raw: string | null): ComplexEntry[] {
   if (!raw) return [];
-  return raw
-    .split(';')
-    .map((chunk) => chunk.trim())
-    .filter(Boolean)
-    .map((chunk) => {
-      const [nome = '', documento = '', percentual = '', estado = ''] = chunk.split('|').map((part) => part.trim());
 
-      if (!estado && BR_UF_REGEX.test(percentual)) {
-        return { nome, documento, percentual: '', estado: percentual };
-      }
+  const chunks = raw.includes(';')
+    ? raw.split(';').map((chunk) => chunk.trim()).filter(Boolean)
+    : (() => {
+        const tokens = raw.split('|').map((part) => part.trim()).filter(Boolean);
+        const grouped: string[] = [];
+        for (let i = 0; i < tokens.length; i += 4) grouped.push(tokens.slice(i, i + 4).join('|'));
+        return grouped;
+      })();
 
-      if (!estado && percentual && percentual.includes('|')) {
-        const [fixedPercentual = '', fixedEstado = ''] = percentual.split('|').map((part) => part.trim());
-        return { nome, documento, percentual: fixedPercentual, estado: fixedEstado };
-      }
+  return chunks.map((chunk) => {
+    const [nome = '', documento = '', percentual = '', estado = ''] = chunk.split('|').map((part) => part.trim());
 
-      return { nome: nome.trim(), documento: documento.trim(), percentual: percentual.trim(), estado: estado.trim() };
-    });
+    if (!estado && BR_UF_REGEX.test(percentual)) {
+      return { nome, documento, percentual: '', estado: percentual };
+    }
+
+    if (!estado && percentual && percentual.includes('|')) {
+      const [fixedPercentual = '', fixedEstado = ''] = percentual.split('|').map((part) => part.trim());
+      return { nome, documento, percentual: fixedPercentual, estado: fixedEstado };
+    }
+
+    return { nome: nome.trim(), documento: documento.trim(), percentual: percentual.trim(), estado: estado.trim() };
+  });
 }
 
 function mapPeopleToColumns(raw: string | null) {
-  const [first] = parsePeople(raw);
-  if (!first) {
+  const people = parsePeople(raw);
+  if (!people.length) {
     return { nome: '', documento: '', percentual: '', estado: '' };
   }
 
-  if (!first.estado && first.percentual && BR_UF_REGEX.test(first.percentual)) {
-    return { nome: first.nome, documento: first.documento, percentual: '', estado: first.percentual };
-  }
+  const normalized = people.map((person) => {
+    if (!person.estado && person.percentual && BR_UF_REGEX.test(person.percentual)) {
+      return { ...person, percentual: '', estado: person.percentual };
+    }
 
-  return first;
+    return person;
+  });
+
+  const joinField = (field: keyof ComplexEntry) => normalized.map((person) => person[field]).filter(Boolean).join('/');
+
+  return {
+    nome: joinField('nome'),
+    documento: joinField('documento'),
+    percentual: joinField('percentual'),
+    estado: joinField('estado'),
+  };
 }
 
 const BR_UF_REGEX = /^[A-Z]{2}$/;
@@ -107,8 +124,9 @@ export async function GET(request: NextRequest) {
   const estado = params.get('estado') ?? '';
   const anoMin = params.get('anoMin');
   const anoMax = params.get('anoMax');
-  const page = Number(params.get('page') ?? '1');
-  const pageSize = Math.min(Number(params.get('pageSize') ?? '25'), 100);
+  const requestedPage = Number(params.get('page') ?? '1');
+  const page = Number.isFinite(requestedPage) && requestedPage > 0 ? Math.floor(requestedPage) : 1;
+  const pageSize = 25;
   const sortBy = params.get('sortBy') ?? 'qtd_negociacoes';
   const sortOrder = params.get('sortOrder') === 'asc';
 
