@@ -144,7 +144,7 @@ export async function GET(request: NextRequest) {
 
   const detailsTable = process.env.NEXT_PUBLIC_AIRCRAFT_DETAILS_TABLE_NAME ?? 'detailed_aircrafts_info';
   const transactionsTable = process.env.NEXT_PUBLIC_AIRCRAFT_TRANSACTIONS_TABLE_NAME ?? 'history_transactions_cache';
-  const incidentsTable = process.env.AIRCRAFT_INCIDENTS_TABLE_NAME ?? 'aircraft_incidents';
+  const incidentsTable = process.env.AIRCRAFT_INCIDENTS_TABLE_NAME ?? 'aicraft_incidents';
   const debugEnabled = process.env.ADVANCED_SEARCH_DEBUG === '1';
   const debugLog = (stage: string, payload: Record<string, unknown>) => {
     if (!debugEnabled) return;
