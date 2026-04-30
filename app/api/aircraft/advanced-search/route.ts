@@ -106,6 +106,13 @@ function getRawPeopleValue(row: RawAircraftRow, field: 'proprietarios' | 'operad
   return typeof value === 'string' ? value : null;
 }
 
+
+function normalizeRegistration(value: string | null | undefined) {
+  return String(value ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+}
 function getFirstStringValue(row: RawAircraftRow, keys: string[], fallback = 'Não informado') {
   for (const key of keys) {
     const raw = row[key];
@@ -259,19 +266,20 @@ export async function GET(request: NextRequest) {
   }));
 
   const marcasReport = Array.from(new Set(reportRows.map((row) => row.marca).filter(Boolean).map((m) => m.trim())));
+  const marcasReportVariants = Array.from(new Set(marcasReport.flatMap((marca) => [marca, marca.toUpperCase(), marca.toLowerCase()])));
   let incidentRows: IncidentRow[] = [];
-  if (marcasReport.length) {
+  if (marcasReportVariants.length) {
     const lowercaseIncidents = await supabase
       .from(incidentsTable)
       .select('marca, classificacao, uf, tipo, ds_gravame')
-      .in('marca', marcasReport)
+      .in('marca', marcasReportVariants)
       .limit(100000);
 
     if (lowercaseIncidents.error) {
       const uppercaseIncidents = await supabase
         .from(incidentsTable)
         .select('MARCA, CLASSIFICACAO, UF, TIPO, DS_GRAVAME')
-        .in('MARCA', marcasReport)
+        .in('MARCA', marcasReportVariants)
         .limit(100000);
       incidentRows = (uppercaseIncidents.data as IncidentRow[] | null) ?? [];
       debugLog('incidents-query', {
@@ -310,7 +318,8 @@ export async function GET(request: NextRequest) {
 
 
   const incidentStatsByMarca = incidentRows.reduce<Record<string, { qtd: number; grave: string }>>((acc, item) => {
-    const key = getFirstStringValue(item as unknown as RawAircraftRow, ['marca', 'MARCA'], '');
+    const rawKey = getFirstStringValue(item as unknown as RawAircraftRow, ['marca', 'MARCA'], '');
+    const key = normalizeRegistration(rawKey);
     if (!key) return acc;
     const current = acc[key] ?? { qtd: 0, grave: '' };
     current.qtd += 1;
@@ -321,7 +330,7 @@ export async function GET(request: NextRequest) {
   }, {});
 
   let rowsWithOccurrences: RowWithOccurrences[] = rows.map((row) => {
-    const stats = incidentStatsByMarca[String(row.marcas ?? '')] ?? { qtd: 0, grave: '' };
+    const stats = incidentStatsByMarca[normalizeRegistration(String(row.marcas ?? ''))] ?? { qtd: 0, grave: '' };
     return { ...row, ds_gravame: stats.grave || 'Não informado', qtd_ocorrencias: stats.qtd };
   });
   if (shouldSortInMemory) {
