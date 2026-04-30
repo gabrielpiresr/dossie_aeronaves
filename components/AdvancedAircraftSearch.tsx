@@ -62,7 +62,7 @@ export default function AdvancedAircraftSearch() {
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [pageSize] = useState(25);
+  const pageSize = 25;
   const [sortBy, setSortBy] = useState('qtd_negociacoes');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_COLUMNS);
@@ -307,7 +307,7 @@ export default function AdvancedAircraftSearch() {
         <span>Total: {total}</span>
         <div className="flex gap-2">
           <button className="rounded border px-2 py-1" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Anterior</button>
-          <span>Página {page}</span>
+          <span>Página {page} de {Math.max(1, Math.ceil(total / pageSize))}</span>
           <button className="rounded border px-2 py-1" disabled={page * pageSize >= total} onClick={() => setPage((p) => p + 1)}>Próxima</button>
         </div>
       </div>
