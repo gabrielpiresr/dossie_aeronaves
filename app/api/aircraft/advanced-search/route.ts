@@ -19,10 +19,15 @@ type RawAircraftRow = {
 };
 type IncidentRow = {
   marca?: string | null;
-  classificacao: string | null;
-  uf: string | null;
-  tipo: string | null;
+  MARCA?: string | null;
+  classificacao?: string | null;
+  CLASSIFICACAO?: string | null;
+  uf?: string | null;
+  UF?: string | null;
+  tipo?: string | null;
+  TIPO?: string | null;
   ds_gravame?: string | null;
+  DS_GRAVAME?: string | null;
 };
 
 type NormalizedAircraftRow = RawAircraftRow & {
@@ -206,15 +211,25 @@ export async function GET(request: NextRequest) {
     uf: getFirstStringValue(row, ['sg_uf', 'SG_UF']),
   }));
 
-  const marcasReport = Array.from(new Set(reportRows.map((row) => row.marca).filter(Boolean)));
+  const marcasReport = Array.from(new Set(reportRows.map((row) => row.marca).filter(Boolean).map((m) => m.trim())));
   let incidentRows: IncidentRow[] = [];
   if (marcasReport.length) {
-    const { data: incidentsData } = await supabase
-      .from(incidentsTable)
-      .select('marca, classificacao, uf, tipo, ds_gravame')
-      .in('marca', marcasReport)
-      .limit(100000);
-    incidentRows = (incidentsData as IncidentRow[] | null) ?? [];
+    const [lowercaseIncidents, uppercaseIncidents] = await Promise.all([
+      supabase
+        .from(incidentsTable)
+        .select('marca, classificacao, uf, tipo, ds_gravame')
+        .in('marca', marcasReport)
+        .limit(100000),
+      supabase
+        .from(incidentsTable)
+        .select('MARCA, CLASSIFICACAO, UF, TIPO, DS_GRAVAME')
+        .in('MARCA', marcasReport)
+        .limit(100000),
+    ]);
+    incidentRows = [
+      ...((lowercaseIncidents.data as IncidentRow[] | null) ?? []),
+      ...((uppercaseIncidents.data as IncidentRow[] | null) ?? []),
+    ];
   }
 
   const countBy = <T,>(items: T[], getKey: (item: T) => string) => {
@@ -235,11 +250,12 @@ export async function GET(request: NextRequest) {
 
 
   const incidentStatsByMarca = incidentRows.reduce<Record<string, { qtd: number; grave: string }>>((acc, item) => {
-    const key = String(item.marca ?? '').trim();
+    const key = getFirstStringValue(item as unknown as RawAircraftRow, ['marca', 'MARCA'], '');
     if (!key) return acc;
     const current = acc[key] ?? { qtd: 0, grave: '' };
     current.qtd += 1;
-    if (!current.grave && item.ds_gravame) current.grave = item.ds_gravame;
+    const gravame = getFirstStringValue(item as unknown as RawAircraftRow, ['ds_gravame', 'DS_GRAVAME'], '');
+    if (!current.grave && gravame) current.grave = gravame;
     acc[key] = current;
     return acc;
   }, {});
@@ -263,10 +279,10 @@ export async function GET(request: NextRequest) {
       .slice(from, to + 1);
   }
 
-  const acidentes = incidentRows.filter((row) => (row.classificacao ?? '').toUpperCase() === 'ACIDENTE').length;
-  const incidentesGraves = incidentRows.filter((row) => (row.classificacao ?? '').toUpperCase() === 'INCIDENTE GRAVE').length;
-  const relatoPorUf = countBy(incidentRows, (row) => String(row.uf ?? 'Não informado')).map((item) => ({ estado: item.label, total: item.total }));
-  const relatoPorTipo = countBy(incidentRows, (row) => String(row.tipo ?? 'Não informado'));
+  const acidentes = incidentRows.filter((row) => getFirstStringValue(row as unknown as RawAircraftRow, ['classificacao', 'CLASSIFICACAO'], '').toUpperCase() === 'ACIDENTE').length;
+  const incidentesGraves = incidentRows.filter((row) => getFirstStringValue(row as unknown as RawAircraftRow, ['classificacao', 'CLASSIFICACAO'], '').toUpperCase() === 'INCIDENTE GRAVE').length;
+  const relatoPorUf = countBy(incidentRows, (row) => getFirstStringValue(row as unknown as RawAircraftRow, ['uf', 'UF'])).map((item) => ({ estado: item.label, total: item.total }));
+  const relatoPorTipo = countBy(incidentRows, (row) => getFirstStringValue(row as unknown as RawAircraftRow, ['tipo', 'TIPO']));
 
   const { data: fabricantesData } = await supabase.from(detailsTable).select('nm_fabricante').not('nm_fabricante', 'is', null).limit(2000);
   const modelosColetados: Array<{ ds_modelo: string | null; nm_fabricante: string | null }> = [];
