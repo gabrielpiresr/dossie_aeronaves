@@ -67,6 +67,7 @@ export default function AdvancedAircraftSearch() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_COLUMNS);
   const [loading, setLoading] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [report, setReport] = useState<ResponsePayload['report']>(undefined);
   const [openFabricantes, setOpenFabricantes] = useState(false);
   const [openModelos, setOpenModelos] = useState(false);
@@ -105,7 +106,10 @@ export default function AdvancedAircraftSearch() {
         setModelos(payload.modelos ?? []);
         setReport(payload.report);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        setHasLoadedOnce(true);
+      });
   }, [queryParams]);
 
   useEffect(() => {
@@ -156,6 +160,10 @@ export default function AdvancedAircraftSearch() {
     [columnBusca, columns],
   );
 
+
+  const isTableLoading = loading && hasLoadedOnce;
+  const visibleRows = showAllRows ? rows : rows.slice(0, 10);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   const yearAverage = useMemo(() => {
     if (!report?.distribuicaoAno?.length) return 0;
@@ -214,39 +222,65 @@ export default function AdvancedAircraftSearch() {
         </div>
       )}
 
-      {loading ? <p className="mt-4 text-sm">Carregando...</p> : rows.length === 0 ? <p className="mt-4 text-sm">Nenhum resultado para os filtros selecionados.</p> : (
+      {!hasLoadedOnce && loading ? <p className="mt-4 text-sm">Carregando...</p> : rows.length === 0 ? <p className="mt-4 text-sm">Nenhum resultado para os filtros selecionados.</p> : (
         <div className="mt-4 overflow-auto">
           <table className="min-w-full border-collapse text-sm">
             <thead>
               <tr>
-                {visibleColumns.map((col) => (
-                  <th key={col} className="cursor-pointer border-b p-2 text-left" onClick={() => { setSortBy(col); setSortOrder(sortBy === col && sortOrder === 'desc' ? 'asc' : 'desc'); }}>
-                    {COLUMN_LABELS[col] ?? col}
-                  </th>
-                ))}
+                {visibleColumns.map((col) => {
+                  const isSorted = sortBy === col;
+                  const sortIcon = isSorted ? (sortOrder === 'asc' ? '↑' : '↓') : '↕';
+                  return (
+                    <th key={col} className="cursor-pointer border-b p-2 text-left" onClick={() => { setSortBy(col); setSortOrder(sortBy === col && sortOrder === 'desc' ? 'asc' : 'desc'); }}>
+                      <span className="inline-flex items-center gap-1">
+                        {COLUMN_LABELS[col] ?? col}
+                        <span className={isSorted ? 'text-slate-800' : 'text-slate-400'} aria-hidden="true">{sortIcon}</span>
+                      </span>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
-              {(showAllRows ? rows : rows.slice(0, 10)).map((row, idx) => (
-                <tr key={idx}>
-                  {visibleColumns.map((col, cIdx) => {
-                    const value = row[col];
-                    if (cIdx === 0 && col === 'marcas') {
-                      return <td key={col} className="border-b p-2"><a className="text-sky-700 underline" href={`/?term=${encodeURIComponent(String(value ?? ''))}&mode=matricula`} target="_blank" rel="noreferrer">{String(value ?? '-')}</a></td>;
-                    }
-                    return <td key={col} className="border-b p-2">{String(value ?? '-')}</td>;
-                  })}
-                </tr>
-              ))}
+              {isTableLoading
+                ? Array.from({ length: 10 }).map((_, idx) => (
+                  <tr key={`skeleton-${idx}`}>
+                    {visibleColumns.map((col) => (
+                      <td key={`${col}-${idx}`} className="border-b p-2">
+                        <div className="h-4 w-full animate-pulse rounded bg-slate-200" />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+                : visibleRows.map((row, idx) => (
+                  <tr key={idx}>
+                    {visibleColumns.map((col, cIdx) => {
+                      const value = row[col];
+                      if (cIdx === 0 && col === 'marcas') {
+                        return <td key={col} className="border-b p-2"><a className="text-sky-700 underline" href={`/?term=${encodeURIComponent(String(value ?? ''))}&mode=matricula`} target="_blank" rel="noreferrer">{String(value ?? '-')}</a></td>;
+                      }
+                      return <td key={col} className="border-b p-2">{String(value ?? '-')}</td>;
+                    })}
+                  </tr>
+                ))}
             </tbody>
           </table>
-          {rows.length > 10 && (
+          {!isTableLoading && rows.length > 10 && (
             <div className="mt-3">
               <button className="rounded border px-3 py-1 text-sm" onClick={() => setShowAllRows((prev) => !prev)}>
                 {showAllRows ? 'Mostrar somente preview (10)' : `Expandir e ver tudo (${rows.length})`}
               </button>
             </div>
           )}
+
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <span>Total: {total}</span>
+            <div className="flex gap-2">
+              <button className="rounded border px-2 py-1" disabled={page <= 1 || isTableLoading} onClick={() => setPage((p) => p - 1)}>Anterior</button>
+              <span>Página {page} de {totalPages}</span>
+              <button className="rounded border px-2 py-1" disabled={page * pageSize >= total || isTableLoading} onClick={() => setPage((p) => p + 1)}>Próxima</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -301,16 +335,6 @@ export default function AdvancedAircraftSearch() {
           </div>
         </div>
       )}
-
-
-      <div className="mt-4 flex items-center justify-between text-sm">
-        <span>Total: {total}</span>
-        <div className="flex gap-2">
-          <button className="rounded border px-2 py-1" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>Anterior</button>
-          <span>Página {page} de {Math.max(1, Math.ceil(total / pageSize))}</span>
-          <button className="rounded border px-2 py-1" disabled={page * pageSize >= total} onClick={() => setPage((p) => p + 1)}>Próxima</button>
-        </div>
-      </div>
     </section>
   );
 }
