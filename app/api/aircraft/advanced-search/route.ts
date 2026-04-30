@@ -163,6 +163,24 @@ export async function GET(request: NextRequest) {
     return next;
   };
 
+  const fetchAllFilteredRows = async (selectClause: string, batchSize = 1000) => {
+    const collected: RawAircraftRow[] = [];
+    let offset = 0;
+    while (true) {
+      const toIndex = offset + batchSize - 1;
+      const response = await applyBaseFilters(
+        supabase.from(detailsTable).select(selectClause).range(offset, toIndex),
+      );
+      const chunk = (response.data as RawAircraftRow[] | null) ?? [];
+      if (response.error) return { data: [] as RawAircraftRow[], error: response.error };
+      if (!chunk.length) break;
+      collected.push(...chunk);
+      if (chunk.length < batchSize) break;
+      offset += chunk.length;
+    }
+    return { data: collected, error: null };
+  };
+
   const sortableInDb = new Set(['marcas', 'nm_fabricante', 'ds_modelo', 'nr_ano_fabricacao', 'sg_uf']);
   const shouldSortInMemory = !sortableInDb.has(sortBy);
   const from = (page - 1) * pageSize;
@@ -212,16 +230,12 @@ export async function GET(request: NextRequest) {
 
   const rows = filteredRows.map((row) => ({ ...row, qtd_negociacoes: txMap[String(row.marcas ?? '')] ?? 0 }));
 
-  const reportBaseLowercase = await applyBaseFilters(
-    supabase.from(detailsTable).select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, sg_uf').limit(10000),
-  );
-  let reportRowsRaw = (reportBaseLowercase.data as RawAircraftRow[] | null) ?? [];
+  const reportBaseLowercase = await fetchAllFilteredRows('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, sg_uf');
+  let reportRowsRaw = reportBaseLowercase.data;
 
   if (reportBaseLowercase.error) {
-    const reportBaseUppercase = await applyBaseFilters(
-      supabase.from(detailsTable).select('MARCAS, NM_FABRICANTE, DS_MODELO, NR_ANO_FABRICACAO, SG_UF').limit(10000),
-    );
-    reportRowsRaw = (reportBaseUppercase.data as RawAircraftRow[] | null) ?? [];
+    const reportBaseUppercase = await fetchAllFilteredRows('MARCAS, NM_FABRICANTE, DS_MODELO, NR_ANO_FABRICACAO, SG_UF');
+    reportRowsRaw = reportBaseUppercase.data;
     debugLog('report-base', {
       strategy: 'fallback-uppercase',
       lowercaseError: reportBaseLowercase.error?.message ?? null,
