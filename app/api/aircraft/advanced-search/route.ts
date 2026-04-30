@@ -149,6 +149,15 @@ export async function GET(request: NextRequest) {
     return next;
   };
 
+  const applyFiltersForModelOptions = (q: any) => {
+    let next = q;
+    if (fabricantes.length) next = next.in('nm_fabricante', fabricantes);
+    if (estado) next = next.eq('sg_uf', estado);
+    if (anoMin) next = next.gte('nr_ano_fabricacao', anoMin);
+    if (anoMax) next = next.lte('nr_ano_fabricacao', anoMax);
+    return next;
+  };
+
   const sortableInDb = new Set(['marcas', 'nm_fabricante', 'ds_modelo', 'nr_ano_fabricacao', 'sg_uf']);
   const shouldSortInMemory = !sortableInDb.has(sortBy);
   const from = (page - 1) * pageSize;
@@ -290,7 +299,7 @@ export async function GET(request: NextRequest) {
   let modelosFrom = 0;
   while (true) {
     const modelosTo = modelosFrom + modelosBatchSize - 1;
-    const { data: modelosLote } = await applyBaseFilters(
+    const { data: modelosLote } = await applyFiltersForModelOptions(
       supabase.from(detailsTable).select('ds_modelo, nm_fabricante').range(modelosFrom, modelosTo),
     );
     const loteAtual = (modelosLote as Array<{ ds_modelo: string | null; nm_fabricante: string | null }> | null) ?? [];
