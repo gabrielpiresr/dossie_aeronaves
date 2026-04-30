@@ -137,12 +137,25 @@ export async function GET(request: NextRequest) {
   const rows = filteredRows.map((row) => ({ ...row, qtd_negociacoes: txMap[String(row.marcas ?? '')] ?? 0 }));
 
   const { data: fabricantesData } = await supabase.from(detailsTable).select('nm_fabricante').not('nm_fabricante', 'is', null).limit(2000);
-  const { data: modelosBase } = await applyBaseFilters(
-    supabase.from(detailsTable).select('ds_modelo, nm_fabricante').limit(10000),
-  );
+  const modelosColetados: Array<{ ds_modelo: string | null; nm_fabricante: string | null }> = [];
+  const modelosBatchSize = 1000;
+  let modelosFrom = 0;
+  while (true) {
+    const modelosTo = modelosFrom + modelosBatchSize - 1;
+    const { data: modelosLote } = await applyBaseFilters(
+      supabase.from(detailsTable).select('ds_modelo, nm_fabricante').range(modelosFrom, modelosTo),
+    );
+    const loteAtual = (modelosLote as Array<{ ds_modelo: string | null; nm_fabricante: string | null }> | null) ?? [];
+    if (!loteAtual.length) break;
+
+    modelosColetados.push(...loteAtual);
+
+    if (loteAtual.length < modelosBatchSize) break;
+    modelosFrom += loteAtual.length;
+  }
   const modelosDisponiveis = Array.from(
     new Set(
-      ((modelosBase as Array<{ ds_modelo: string | null; nm_fabricante: string | null }> | null) ?? [])
+      modelosColetados
         .map((row) => row.ds_modelo ?? '')
         .filter(Boolean),
     ),
