@@ -10,6 +10,12 @@ type RawAircraftRow = {
   PROPRIETARIOS?: string | null;
   OPERADORES?: string | null;
 };
+type IncidentRow = {
+  classificacao: string | null;
+  uf: string | null;
+  tipo: string | null;
+};
+
 type NormalizedAircraftRow = RawAircraftRow & {
   proprietario_nome: string;
   proprietario_documento: string;
@@ -67,6 +73,7 @@ export async function GET(request: NextRequest) {
 
   const detailsTable = process.env.NEXT_PUBLIC_AIRCRAFT_DETAILS_TABLE_NAME ?? 'detailed_aircrafts_info';
   const transactionsTable = process.env.NEXT_PUBLIC_AIRCRAFT_TRANSACTIONS_TABLE_NAME ?? 'history_transactions_cache';
+  const incidentsTable = process.env.AIRCRAFT_INCIDENTS_TABLE_NAME ?? 'aicraft_incidents';
 
   const applyBaseFilters = (q: any) => {
     let next = q;
@@ -136,6 +143,53 @@ export async function GET(request: NextRequest) {
 
   const rows = filteredRows.map((row) => ({ ...row, qtd_negociacoes: txMap[String(row.marcas ?? '')] ?? 0 }));
 
+  const { data: reportBaseRows } = await applyBaseFilters(
+    supabase.from(detailsTable).select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, sg_uf').limit(10000),
+  );
+  const reportRowsRaw = ((reportBaseRows as RawAircraftRow[] | null) ?? []).filter((row) =>
+    modelos.length ? modelos.includes(String(row.ds_modelo ?? '')) : true,
+  );
+
+  const reportRows = reportRowsRaw.map((row) => ({
+    marca: String(row.marcas ?? ''),
+    fabricante: String(row.nm_fabricante ?? 'Não informado'),
+    modelo: String(row.ds_modelo ?? 'Não informado'),
+    ano: String(row.nr_ano_fabricacao ?? 'Não informado'),
+    uf: String(row.sg_uf ?? 'Não informado'),
+  }));
+
+  const marcasReport = Array.from(new Set(reportRows.map((row) => row.marca).filter(Boolean)));
+  let incidentRows: IncidentRow[] = [];
+  if (marcasReport.length) {
+    const { data: incidentsData } = await supabase
+      .from(incidentsTable)
+      .select('classificacao, uf, tipo')
+      .in('marca', marcasReport)
+      .limit(100000);
+    incidentRows = (incidentsData as IncidentRow[] | null) ?? [];
+  }
+
+  const countBy = <T,>(items: T[], getKey: (item: T) => string) => {
+    const map = new Map<string, number>();
+    items.forEach((item) => {
+      const key = getKey(item).trim() || 'Não informado';
+      map.set(key, (map.get(key) ?? 0) + 1);
+    });
+    return Array.from(map.entries())
+      .map(([label, total]) => ({ label, total }))
+      .sort((a, b) => b.total - a.total || a.label.localeCompare(b.label));
+  };
+
+  const distribuicaoAno = countBy(reportRows, (row) => row.ano);
+  const distribuicaoFabricante = countBy(reportRows, (row) => row.fabricante);
+  const distribuicaoModelo = countBy(reportRows, (row) => row.modelo);
+  const mapaPorEstado = countBy(reportRows, (row) => row.uf).map((item) => ({ estado: item.label, total: item.total }));
+
+  const acidentes = incidentRows.filter((row) => (row.classificacao ?? '').toUpperCase() === 'ACIDENTE').length;
+  const incidentesGraves = incidentRows.filter((row) => (row.classificacao ?? '').toUpperCase() === 'INCIDENTE GRAVE').length;
+  const relatoPorUf = countBy(incidentRows, (row) => String(row.uf ?? 'Não informado')).map((item) => ({ estado: item.label, total: item.total }));
+  const relatoPorTipo = countBy(incidentRows, (row) => String(row.tipo ?? 'Não informado'));
+
   const { data: fabricantesData } = await supabase.from(detailsTable).select('nm_fabricante').not('nm_fabricante', 'is', null).limit(2000);
   const modelosColetados: Array<{ ds_modelo: string | null; nm_fabricante: string | null }> = [];
   const modelosBatchSize = 1000;
@@ -166,5 +220,18 @@ export async function GET(request: NextRequest) {
     total: count ?? 0,
     fabricantes: Array.from(new Set((fabricantesData ?? []).map((item: { nm_fabricante: string }) => item.nm_fabricante))).sort(),
     modelos: modelosDisponiveis.sort(),
+    report: {
+      totalAeronaves: reportRows.length,
+      distribuicaoAno,
+      mapaPorEstado,
+      distribuicaoFabricante,
+      distribuicaoModelo,
+      ocorrencias: {
+        acidentes,
+        incidentesGraves,
+        relatoPorUf,
+        relatoPorTipo,
+      },
+    },
   });
 }

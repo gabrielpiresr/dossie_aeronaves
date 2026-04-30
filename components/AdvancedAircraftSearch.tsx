@@ -1,14 +1,33 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import BarChart from '@/components/charts/BarChart';
+import BrazilMapChart from '@/components/charts/BrazilMapChart';
+import DonutChart from '@/components/charts/DonutChart';
 
 type Row = Record<string, string | number | null>;
+
+type DistributionItem = { label: string; total: number };
+type StateItem = { estado: string; total: number };
 
 type ResponsePayload = {
   rows: Row[];
   total: number;
   fabricantes: string[];
   modelos: string[];
+  report?: {
+    totalAeronaves: number;
+    distribuicaoAno: DistributionItem[];
+    mapaPorEstado: StateItem[];
+    distribuicaoFabricante: DistributionItem[];
+    distribuicaoModelo: DistributionItem[];
+    ocorrencias: {
+      acidentes: number;
+      incidentesGraves: number;
+      relatoPorUf: StateItem[];
+      relatoPorTipo: DistributionItem[];
+    };
+  };
 };
 const BR_UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
 
@@ -46,6 +65,7 @@ export default function AdvancedAircraftSearch() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_COLUMNS);
   const [loading, setLoading] = useState(false);
+  const [report, setReport] = useState<ResponsePayload['report']>(undefined);
   const [openFabricantes, setOpenFabricantes] = useState(false);
   const [openModelos, setOpenModelos] = useState(false);
   const [openColumns, setOpenColumns] = useState(false);
@@ -79,6 +99,7 @@ export default function AdvancedAircraftSearch() {
         setTotal(payload.total ?? 0);
         setFabricantes(payload.fabricantes ?? []);
         setModelos(payload.modelos ?? []);
+        setReport(payload.report);
       })
       .finally(() => setLoading(false));
   }, [queryParams]);
@@ -108,6 +129,17 @@ export default function AdvancedAircraftSearch() {
     [columnBusca, columns],
   );
 
+
+  const yearAverage = useMemo(() => {
+    if (!report?.distribuicaoAno?.length) return 0;
+    const valid = report.distribuicaoAno
+      .map((item) => ({ year: Number(item.label), total: item.total }))
+      .filter((item) => Number.isFinite(item.year) && item.total > 0);
+    const totalWeight = valid.reduce((acc, item) => acc + item.total, 0);
+    if (!totalWeight) return 0;
+    return valid.reduce((acc, item) => acc + item.year * item.total, 0) / totalWeight;
+  }, [report]);
+
   return (
     <section className="mt-8 w-full rounded-md border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-900">Busca Avançada</h2>
@@ -128,7 +160,54 @@ export default function AdvancedAircraftSearch() {
           <option value="">Todos os estados</option>
           {BR_UFS.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
         </select>
+
       </div>
+
+      {report && (
+        <div className="mt-6 space-y-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h3 className="text-base font-semibold text-slate-900">Report da busca</h3>
+            <p className="mt-1 text-sm text-slate-500">Dados gerais e ocorrências com base no filtro atual.</p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-xs text-slate-500">Qnt de aeronaves encontrada</p>
+            <p className="mt-1 text-3xl font-semibold text-slate-900">{report.totalAeronaves.toLocaleString('pt-BR')}</p>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <DonutChart title="Distribuição por ano" data={report.distribuicaoAno.slice(0, 12).map((i) => ({ label: i.label, value: i.total }))} centerLabel="Média" centerValue={yearAverage} />
+            <DonutChart title="Distribuição por fabricante" data={report.distribuicaoFabricante.slice(0, 10).map((i) => ({ label: i.label, value: i.total }))} centerLabel="Fabricantes" />
+            <DonutChart title="Distribuição por modelo" data={report.distribuicaoModelo.slice(0, 10).map((i) => ({ label: i.label, value: i.total }))} centerLabel="Modelos" />
+            <BrazilMapChart title="Mapa do Brasil por estado de qnt" data={report.mapaPorEstado} />
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h4 className="text-sm font-semibold text-slate-800">Ocorrências</h4>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <article className="rounded-md border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3"><p className="text-xs text-slate-500">Número de acidentes</p><p className="mt-1 text-2xl font-semibold text-slate-900">{report.ocorrencias.acidentes.toLocaleString('pt-BR')}</p></article>
+              <article className="rounded-md border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3"><p className="text-xs text-slate-500">Número de incidentes graves</p><p className="mt-1 text-2xl font-semibold text-slate-900">{report.ocorrencias.incidentesGraves.toLocaleString('pt-BR')}</p></article>
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Relato por UF</p>
+                <BarChart categories={report.ocorrencias.relatoPorUf.slice(0, 12).map((i) => i.estado)} series={[{ name: 'Ocorrências', data: report.ocorrencias.relatoPorUf.slice(0, 12).map((i) => i.total), color: '#2563eb' }]} />
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Relato por tipo (desc)</p>
+                <div className="mt-2 max-h-72 overflow-auto">
+                  <table className="min-w-full text-left text-xs text-slate-700">
+                    <thead className="bg-slate-100"><tr><th className="px-3 py-2">Tipo</th><th className="px-3 py-2">Qtd</th></tr></thead>
+                    <tbody>
+                      {report.ocorrencias.relatoPorTipo.map((row) => <tr key={row.label} className="border-t border-slate-100"><td className="px-3 py-2">{row.label}</td><td className="px-3 py-2">{row.total.toLocaleString('pt-BR')}</td></tr>)}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {columns.length > 0 && (
         <div className="relative mt-4 max-w-md" ref={columnsRef}>
