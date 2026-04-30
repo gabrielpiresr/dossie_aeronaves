@@ -11,6 +11,7 @@ type ResponsePayload = {
   fabricantes: string[];
   modelos: string[];
 };
+const BR_UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
 
 const DEFAULT_COLUMNS = ['marcas', 'nm_fabricante', 'ds_modelo', 'nr_ano_fabricacao', 'sg_uf', 'qtd_negociacoes'];
 
@@ -30,6 +31,8 @@ export default function AdvancedAircraftSearch() {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [visibleColumns, setVisibleColumns] = useState<string[]>(DEFAULT_COLUMNS);
   const [loading, setLoading] = useState(false);
+  const [openFabricantes, setOpenFabricantes] = useState(false);
+  const [openModelos, setOpenModelos] = useState(false);
 
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -64,15 +67,22 @@ export default function AdvancedAircraftSearch() {
     <section className="mt-8 w-full rounded-md border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-900">Busca Avançada</h2>
       <div className="mt-4 grid gap-4 md:grid-cols-4">
-        <select multiple className="rounded border p-2" value={selectedFabricantes} onChange={(e) => { setSelectedFabricantes(Array.from(e.target.selectedOptions).map((o) => o.value)); setSelectedModelos([]); setPage(1); }}>
-          {fabricantes.map((f) => <option key={f} value={f}>{f}</option>)}
-        </select>
-        <select multiple className="rounded border p-2" value={selectedModelos} onChange={(e) => { setSelectedModelos(Array.from(e.target.selectedOptions).map((o) => o.value)); setPage(1); }}>
-          {modelos.map((m) => <option key={m} value={m}>{m}</option>)}
-        </select>
+        <div className="relative">
+          <button className="w-full rounded border p-2 text-left text-sm" onClick={() => setOpenFabricantes((v) => !v)} type="button">Fabricantes</button>
+          <div className="mt-1 flex flex-wrap gap-1">{selectedFabricantes.map((item) => <span key={item} className="rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-800">{item}</span>)}</div>
+          {openFabricantes && <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded border bg-white p-2 shadow">{fabricantes.map((f) => <label key={f} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedFabricantes.includes(f)} onChange={() => { setSelectedFabricantes((prev) => prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]); setSelectedModelos([]); setPage(1); }} />{f}</label>)}</div>}
+        </div>
+        <div className="relative">
+          <button className="w-full rounded border p-2 text-left text-sm" onClick={() => setOpenModelos((v) => !v)} type="button">Modelos</button>
+          <div className="mt-1 flex flex-wrap gap-1">{selectedModelos.map((item) => <span key={item} className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">{item}</span>)}</div>
+          {openModelos && <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded border bg-white p-2 shadow">{modelos.map((m) => <label key={m} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedModelos.includes(m)} onChange={() => { setSelectedModelos((prev) => prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]); setPage(1); }} />{m}</label>)}</div>}
+        </div>
         <input className="rounded border p-2" placeholder="Ano mínimo" value={anoMin} onChange={(e) => { setAnoMin(e.target.value); setPage(1); }} />
         <input className="rounded border p-2" placeholder="Ano máximo" value={anoMax} onChange={(e) => { setAnoMax(e.target.value); setPage(1); }} />
-        <input className="rounded border p-2" placeholder="Estado (UF)" value={estado} onChange={(e) => { setEstado(e.target.value.toUpperCase()); setPage(1); }} />
+        <select className="rounded border p-2" value={estado} onChange={(e) => { setEstado(e.target.value); setPage(1); }}>
+          <option value="">Todos os estados</option>
+          {BR_UFS.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
+        </select>
       </div>
 
       {columns.length > 0 && (
