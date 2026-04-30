@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-type ComplexEntry = { nome: string; documento: string; percentual: string; estado: string };
-type Row = Record<string, string | number | null | ComplexEntry[]>;
+type Row = Record<string, string | number | null>;
 
 type ResponsePayload = {
   rows: Row[];
@@ -33,8 +32,10 @@ export default function AdvancedAircraftSearch() {
   const [loading, setLoading] = useState(false);
   const [openFabricantes, setOpenFabricantes] = useState(false);
   const [openModelos, setOpenModelos] = useState(false);
+  const [openColumns, setOpenColumns] = useState(false);
   const [fabricanteBusca, setFabricanteBusca] = useState('');
   const [modeloBusca, setModeloBusca] = useState('');
+  const [columnBusca, setColumnBusca] = useState('');
 
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -72,6 +73,10 @@ export default function AdvancedAircraftSearch() {
     () => modelos.filter((m) => m.toLowerCase().includes(modeloBusca.toLowerCase())),
     [modeloBusca, modelos],
   );
+  const columnsFiltradas = useMemo(
+    () => columns.filter((c) => c.toLowerCase().includes(columnBusca.toLowerCase())),
+    [columnBusca, columns],
+  );
 
   return (
     <section className="mt-8 w-full rounded-md border border-slate-200 bg-white p-6 shadow-sm">
@@ -96,16 +101,10 @@ export default function AdvancedAircraftSearch() {
       </div>
 
       {columns.length > 0 && (
-        <div className="mt-4 flex flex-wrap gap-2">
-          {columns.map((col) => (
-            <label key={col} className="text-xs">
-              <input
-                type="checkbox"
-                checked={visibleColumns.includes(col)}
-                onChange={(e) => setVisibleColumns((prev) => e.target.checked ? [...prev, col] : prev.filter((item) => item !== col))}
-              /> {col}
-            </label>
-          ))}
+        <div className="relative mt-4 max-w-md">
+          <button className="w-full rounded border p-2 text-left text-sm" onClick={() => setOpenColumns((v) => !v)} type="button">Colunas exibidas</button>
+          <div className="mt-1 flex flex-wrap gap-1">{visibleColumns.map((item) => <span key={item} className="rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-800">{item}</span>)}</div>
+          {openColumns && <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded border bg-white p-2 shadow"><input className="mb-2 w-full rounded border p-1 text-xs" placeholder="Buscar coluna..." value={columnBusca} onChange={(e) => setColumnBusca(e.target.value)} />{columnsFiltradas.map((col) => <label key={col} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={visibleColumns.includes(col)} onChange={() => setVisibleColumns((prev) => prev.includes(col) ? prev.filter((x) => x !== col) : [...prev, col])} />{col}</label>)}</div>}
         </div>
       )}
 
@@ -128,9 +127,6 @@ export default function AdvancedAircraftSearch() {
                     const value = row[col];
                     if (cIdx === 0 && col === 'marcas') {
                       return <td key={col} className="border-b p-2"><a className="text-sky-700 underline" href={`/?term=${encodeURIComponent(String(value ?? ''))}&mode=matricula`}>{String(value ?? '-')}</a></td>;
-                    }
-                    if (Array.isArray(value)) {
-                      return <td key={col} className="border-b p-2">{value.map((item, i) => <div key={i}>{item.nome} ({item.estado}) - {item.percentual}</div>)}</td>;
                     }
                     return <td key={col} className="border-b p-2">{String(value ?? '-')}</td>;
                   })}
