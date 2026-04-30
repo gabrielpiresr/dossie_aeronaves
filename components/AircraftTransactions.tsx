@@ -30,6 +30,7 @@ export default function AircraftTransactions({ transactions, isLoading = false }
   return (
     <section className="mt-8 w-full rounded-md border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-900">Timeline de Negociações</h2>
+      <p className="mt-1 text-sm text-slate-500">Negociações somente a partir de 2016</p>
 
       {isLoading ? (
         <p className="mt-4 text-sm text-slate-600">Carregando negociações...</p>
