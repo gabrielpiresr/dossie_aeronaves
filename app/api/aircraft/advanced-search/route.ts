@@ -11,9 +11,11 @@ type RawAircraftRow = {
   OPERADORES?: string | null;
 };
 type IncidentRow = {
+  marca?: string | null;
   classificacao: string | null;
   uf: string | null;
   tipo: string | null;
+  ds_gravame?: string | null;
 };
 
 type NormalizedAircraftRow = RawAircraftRow & {
@@ -83,11 +85,12 @@ export async function GET(request: NextRequest) {
 
   const detailsTable = process.env.NEXT_PUBLIC_AIRCRAFT_DETAILS_TABLE_NAME ?? 'detailed_aircrafts_info';
   const transactionsTable = process.env.NEXT_PUBLIC_AIRCRAFT_TRANSACTIONS_TABLE_NAME ?? 'history_transactions_cache';
-  const incidentsTable = process.env.AIRCRAFT_INCIDENTS_TABLE_NAME ?? 'aicraft_incidents';
+  const incidentsTable = process.env.AIRCRAFT_INCIDENTS_TABLE_NAME ?? 'aircraft_incidents';
 
   const applyBaseFilters = (q: any) => {
     let next = q;
     if (fabricantes.length) next = next.in('nm_fabricante', fabricantes);
+    if (modelos.length) next = next.in('ds_modelo', modelos);
     if (estado) next = next.eq('sg_uf', estado);
     if (anoMin) next = next.gte('nr_ano_fabricacao', anoMin);
     if (anoMax) next = next.lte('nr_ano_fabricacao', anoMax);
@@ -98,10 +101,13 @@ export async function GET(request: NextRequest) {
   let count = 0;
 
   if (modelos.length) {
-    const { data } = await applyBaseFilters(
-      supabase.from(detailsTable).select('*').limit(10000),
-    );
-    baseRows = (data as RawAircraftRow[] | null) ?? [];
+    let query = applyBaseFilters(supabase.from(detailsTable).select('*', { count: 'exact' }));
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+    query = query.order(sortBy, { ascending: sortOrder }).range(from, to);
+    const response = await query;
+    baseRows = (response.data as RawAircraftRow[] | null) ?? [];
+    count = response.count ?? 0;
   } else {
     let query = applyBaseFilters(supabase.from(detailsTable).select('*', { count: 'exact' }));
     const from = (page - 1) * pageSize;
@@ -129,23 +135,12 @@ export async function GET(request: NextRequest) {
     };
   });
 
-  let filteredRows: NormalizedAircraftRow[] = modelos.length
-    ? normalizedRows.filter((row) => modelos.includes(String(row.ds_modelo ?? '')))
-    : normalizedRows;
-  if (modelos.length) {
-    filteredRows = filteredRows.sort((a, b) => {
-      const left = String(a[sortBy] ?? '');
-      const right = String(b[sortBy] ?? '');
-      return sortOrder ? left.localeCompare(right) : right.localeCompare(left);
-    });
-    count = filteredRows.length;
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize;
-    filteredRows = filteredRows.slice(from, to);
-  }
+  const filteredRows: NormalizedAircraftRow[] = normalizedRows;
 
   const marcas = filteredRows.map((row) => row.marcas).filter(Boolean);
-  const { data: txData } = await supabase.from(transactionsTable).select('marca').in('marca', marcas as string[]);
+  const { data: txData } = marcas.length
+    ? await supabase.from(transactionsTable).select('marca').in('marca', marcas as string[])
+    : { data: [] as Array<{ marca: string }> };
   const txMap = (txData ?? []).reduce<Record<string, number>>((acc, item: { marca: string }) => {
     acc[item.marca] = (acc[item.marca] ?? 0) + 1;
     return acc;
@@ -156,9 +151,7 @@ export async function GET(request: NextRequest) {
   const { data: reportBaseRows } = await applyBaseFilters(
     supabase.from(detailsTable).select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, sg_uf').limit(10000),
   );
-  const reportRowsRaw = ((reportBaseRows as RawAircraftRow[] | null) ?? []).filter((row) =>
-    modelos.length ? modelos.includes(String(row.ds_modelo ?? '')) : true,
-  );
+  const reportRowsRaw = (reportBaseRows as RawAircraftRow[] | null) ?? [];
 
   const reportRows = reportRowsRaw.map((row) => ({
     marca: String(row.marcas ?? ''),
@@ -173,7 +166,7 @@ export async function GET(request: NextRequest) {
   if (marcasReport.length) {
     const { data: incidentsData } = await supabase
       .from(incidentsTable)
-      .select('classificacao, uf, tipo')
+      .select('marca, classificacao, uf, tipo, ds_gravame')
       .in('marca', marcasReport)
       .limit(100000);
     incidentRows = (incidentsData as IncidentRow[] | null) ?? [];
@@ -194,6 +187,22 @@ export async function GET(request: NextRequest) {
   const distribuicaoFabricante = countBy(reportRows, (row) => row.fabricante);
   const distribuicaoModelo = countBy(reportRows, (row) => row.modelo);
   const mapaPorEstado = countBy(reportRows, (row) => row.uf).map((item) => ({ estado: item.label, total: item.total }));
+
+
+  const incidentStatsByMarca = incidentRows.reduce<Record<string, { qtd: number; grave: string }>>((acc, item) => {
+    const key = String(item.marca ?? '').trim();
+    if (!key) return acc;
+    const current = acc[key] ?? { qtd: 0, grave: '' };
+    current.qtd += 1;
+    if (!current.grave && item.ds_gravame) current.grave = item.ds_gravame;
+    acc[key] = current;
+    return acc;
+  }, {});
+
+  const rowsWithOccurrences = rows.map((row) => {
+    const stats = incidentStatsByMarca[String(row.marcas ?? '')] ?? { qtd: 0, grave: '' };
+    return { ...row, ds_gravame: stats.grave || 'Não informado', qtd_ocorrencias: stats.qtd };
+  });
 
   const acidentes = incidentRows.filter((row) => (row.classificacao ?? '').toUpperCase() === 'ACIDENTE').length;
   const incidentesGraves = incidentRows.filter((row) => (row.classificacao ?? '').toUpperCase() === 'INCIDENTE GRAVE').length;
@@ -226,7 +235,7 @@ export async function GET(request: NextRequest) {
   );
 
   return NextResponse.json({
-    rows,
+    rows: rowsWithOccurrences,
     total: count ?? 0,
     fabricantes: Array.from(new Set((fabricantesData ?? []).map((item: { nm_fabricante: string }) => item.nm_fabricante))).sort(),
     modelos: modelosDisponiveis.sort(),

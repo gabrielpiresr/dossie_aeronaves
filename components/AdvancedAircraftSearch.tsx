@@ -31,7 +31,7 @@ type ResponsePayload = {
 };
 const BR_UFS = ['AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
 
-const DEFAULT_COLUMNS = ['marcas', 'nm_fabricante', 'ds_modelo', 'nr_ano_fabricacao', 'sg_uf', 'qtd_negociacoes'];
+const DEFAULT_COLUMNS = ['marcas', 'nm_fabricante', 'ds_modelo', 'ds_gravame', 'qtd_ocorrencias', 'nr_ano_fabricacao', 'sg_uf', 'qtd_negociacoes'];
 const COLUMN_LABELS: Record<string, string> = {
   marcas: 'Matrícula',
   nm_fabricante: 'Fabricante',
@@ -47,6 +47,8 @@ const COLUMN_LABELS: Record<string, string> = {
   operador_documento: 'Operador (documento)',
   operador_percentual_cota: 'Operador (% cota)',
   operador_estado: 'Operador (UF)',
+  ds_gravame: 'Gravame',
+  qtd_ocorrencias: 'Qtd. ocorrências',
 };
 
 export default function AdvancedAircraftSearch() {
@@ -73,6 +75,7 @@ export default function AdvancedAircraftSearch() {
   const [modeloBusca, setModeloBusca] = useState('');
   const [columnBusca, setColumnBusca] = useState('');
   const [showAllRows, setShowAllRows] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const fabricantesRef = useRef<HTMLDivElement | null>(null);
   const modelosRef = useRef<HTMLDivElement | null>(null);
   const columnsRef = useRef<HTMLDivElement | null>(null);
@@ -119,6 +122,25 @@ export default function AdvancedAircraftSearch() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [openColumns, openFabricantes, openModelos]);
+
+  const shareLink = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    return `${window.location.origin}/?advanced=1&${queryParams}`;
+  }, [queryParams]);
+
+  const downloadCsv = () => {
+    const csvRows = [visibleColumns.join(';')];
+    rows.forEach((row) => {
+      csvRows.push(visibleColumns.map((col) => `"${String(row[col] ?? '').replaceAll('\"', '\\\"')}"`).join(';'));
+    });
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'resultado_busca_aeronaves.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const columns = useMemo(() => Array.from(new Set(rows.flatMap((r) => Object.keys(r)))), [rows]);
   const fabricantesFiltrados = useMemo(
@@ -167,6 +189,22 @@ export default function AdvancedAircraftSearch() {
         </select>
 
       </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" className="rounded border px-3 py-1 text-sm" onClick={() => setShowShareModal(true)}>Compartilhar busca</button>
+        <button type="button" className="rounded border px-3 py-1 text-sm" onClick={downloadCsv} disabled={!rows.length}>Baixar resultado</button>
+      </div>
+
+      {showShareModal && (
+        <div className="mt-3 rounded border bg-slate-50 p-3">
+          <p className="text-sm font-medium">Link da busca</p>
+          <input readOnly value={shareLink} className="mt-2 w-full rounded border p-2 text-xs" />
+          <div className="mt-2 flex gap-2">
+            <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => navigator.clipboard.writeText(shareLink)}>Copiar link</button>
+            <button type="button" className="rounded border px-2 py-1 text-xs" onClick={() => setShowShareModal(false)}>Fechar</button>
+          </div>
+        </div>
+      )}
 
       {columns.length > 0 && (
         <div className="relative mt-4 max-w-md" ref={columnsRef}>
@@ -222,6 +260,12 @@ export default function AdvancedAircraftSearch() {
           <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-xs text-slate-500">Qnt de aeronaves encontrada</p>
             <p className="mt-1 text-3xl font-semibold text-slate-900">{report.totalAeronaves.toLocaleString('pt-BR')}</p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <article className="rounded-md border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3"><p className="text-xs text-slate-500">Total de ocorrências</p><p className="mt-1 text-2xl font-semibold text-slate-900">{(report.ocorrencias.acidentes + report.ocorrencias.incidentesGraves).toLocaleString('pt-BR')}</p></article>
+            <article className="rounded-md border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3"><p className="text-xs text-slate-500">Incidentes graves</p><p className="mt-1 text-2xl font-semibold text-slate-900">{report.ocorrencias.incidentesGraves.toLocaleString('pt-BR')}</p></article>
+            <article className="rounded-md border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3"><p className="text-xs text-slate-500">Acidentes</p><p className="mt-1 text-2xl font-semibold text-slate-900">{report.ocorrencias.acidentes.toLocaleString('pt-BR')}</p></article>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
