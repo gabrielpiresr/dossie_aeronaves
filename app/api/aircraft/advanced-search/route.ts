@@ -67,14 +67,23 @@ export async function GET(request: NextRequest) {
     return next;
   };
 
-  let query = applyBaseFilters(supabase.from(detailsTable).select('*', { count: 'exact' }));
+  let baseRows: RawAircraftRow[] = [];
+  let count = 0;
 
-  const from = (page - 1) * pageSize;
-  const to = from + pageSize - 1;
-  query = query.order(sortBy, { ascending: sortOrder }).range(from, to);
-
-  const { data, count } = await query;
-  const baseRows = (data as RawAircraftRow[] | null) ?? [];
+  if (modelos.length) {
+    const { data } = await applyBaseFilters(
+      supabase.from(detailsTable).select('*').limit(10000),
+    );
+    baseRows = (data as RawAircraftRow[] | null) ?? [];
+  } else {
+    let query = applyBaseFilters(supabase.from(detailsTable).select('*', { count: 'exact' }));
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+    query = query.order(sortBy, { ascending: sortOrder }).range(from, to);
+    const response = await query;
+    baseRows = (response.data as RawAircraftRow[] | null) ?? [];
+    count = response.count ?? 0;
+  }
 
   const normalizedRows: NormalizedAircraftRow[] = baseRows.map((row) => {
     const fabricante = row.nm_fabricante ?? '';
@@ -87,9 +96,20 @@ export async function GET(request: NextRequest) {
     };
   });
 
-  const filteredRows: NormalizedAircraftRow[] = modelos.length
+  let filteredRows: NormalizedAircraftRow[] = modelos.length
     ? normalizedRows.filter((row) => modelos.includes(String(row.modelo_normalizado ?? '')))
     : normalizedRows;
+  if (modelos.length) {
+    filteredRows = filteredRows.sort((a, b) => {
+      const left = String(a[sortBy] ?? '');
+      const right = String(b[sortBy] ?? '');
+      return sortOrder ? left.localeCompare(right) : right.localeCompare(left);
+    });
+    count = filteredRows.length;
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize;
+    filteredRows = filteredRows.slice(from, to);
+  }
 
   const marcas = filteredRows.map((row) => row.marcas).filter(Boolean);
   const { data: txData } = await supabase.from(transactionsTable).select('marca').in('marca', marcas as string[]);

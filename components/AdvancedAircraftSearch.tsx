@@ -33,6 +33,8 @@ export default function AdvancedAircraftSearch() {
   const [loading, setLoading] = useState(false);
   const [openFabricantes, setOpenFabricantes] = useState(false);
   const [openModelos, setOpenModelos] = useState(false);
+  const [fabricanteBusca, setFabricanteBusca] = useState('');
+  const [modeloBusca, setModeloBusca] = useState('');
 
   const queryParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -62,6 +64,14 @@ export default function AdvancedAircraftSearch() {
   }, [queryParams]);
 
   const columns = useMemo(() => Array.from(new Set(rows.flatMap((r) => Object.keys(r)))), [rows]);
+  const fabricantesFiltrados = useMemo(
+    () => fabricantes.filter((f) => f.toLowerCase().includes(fabricanteBusca.toLowerCase())),
+    [fabricanteBusca, fabricantes],
+  );
+  const modelosFiltrados = useMemo(
+    () => modelos.filter((m) => m.toLowerCase().includes(modeloBusca.toLowerCase())),
+    [modeloBusca, modelos],
+  );
 
   return (
     <section className="mt-8 w-full rounded-md border border-slate-200 bg-white p-6 shadow-sm">
@@ -70,12 +80,12 @@ export default function AdvancedAircraftSearch() {
         <div className="relative">
           <button className="w-full rounded border p-2 text-left text-sm" onClick={() => setOpenFabricantes((v) => !v)} type="button">Fabricantes</button>
           <div className="mt-1 flex flex-wrap gap-1">{selectedFabricantes.map((item) => <span key={item} className="rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-800">{item}</span>)}</div>
-          {openFabricantes && <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded border bg-white p-2 shadow">{fabricantes.map((f) => <label key={f} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedFabricantes.includes(f)} onChange={() => { setSelectedFabricantes((prev) => prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]); setSelectedModelos([]); setPage(1); }} />{f}</label>)}</div>}
+          {openFabricantes && <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded border bg-white p-2 shadow"><input className="mb-2 w-full rounded border p-1 text-xs" placeholder="Buscar fabricante..." value={fabricanteBusca} onChange={(e) => setFabricanteBusca(e.target.value)} />{fabricantesFiltrados.map((f) => <label key={f} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedFabricantes.includes(f)} onChange={() => { setSelectedFabricantes((prev) => prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]); setSelectedModelos([]); setPage(1); }} />{f}</label>)}</div>}
         </div>
         <div className="relative">
           <button className="w-full rounded border p-2 text-left text-sm" onClick={() => setOpenModelos((v) => !v)} type="button">Modelos</button>
           <div className="mt-1 flex flex-wrap gap-1">{selectedModelos.map((item) => <span key={item} className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">{item}</span>)}</div>
-          {openModelos && <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded border bg-white p-2 shadow">{modelos.map((m) => <label key={m} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedModelos.includes(m)} onChange={() => { setSelectedModelos((prev) => prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]); setPage(1); }} />{m}</label>)}</div>}
+          {openModelos && <div className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded border bg-white p-2 shadow"><input className="mb-2 w-full rounded border p-1 text-xs" placeholder="Buscar modelo..." value={modeloBusca} onChange={(e) => setModeloBusca(e.target.value)} />{modelosFiltrados.map((m) => <label key={m} className="flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedModelos.includes(m)} onChange={() => { setSelectedModelos((prev) => prev.includes(m) ? prev.filter((x) => x !== m) : [...prev, m]); setPage(1); }} />{m}</label>)}</div>}
         </div>
         <input className="rounded border p-2" placeholder="Ano mínimo" value={anoMin} onChange={(e) => { setAnoMin(e.target.value); setPage(1); }} />
         <input className="rounded border p-2" placeholder="Ano máximo" value={anoMax} onChange={(e) => { setAnoMax(e.target.value); setPage(1); }} />
