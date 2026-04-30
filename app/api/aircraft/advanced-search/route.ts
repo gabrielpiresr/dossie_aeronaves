@@ -28,6 +28,11 @@ type NormalizedAircraftRow = RawAircraftRow & {
   operador_percentual_cota: string;
   operador_estado: string;
 };
+type RowWithOccurrences = NormalizedAircraftRow & {
+  qtd_negociacoes: number;
+  qtd_ocorrencias: number;
+  ds_gravame: string;
+};
 
 function parsePeople(raw: string | null): ComplexEntry[] {
   if (!raw) return [];
@@ -197,15 +202,15 @@ export async function GET(request: NextRequest) {
     return acc;
   }, {});
 
-  let rowsWithOccurrences = rows.map((row) => {
+  let rowsWithOccurrences: RowWithOccurrences[] = rows.map((row) => {
     const stats = incidentStatsByMarca[String(row.marcas ?? '')] ?? { qtd: 0, grave: '' };
     return { ...row, ds_gravame: stats.grave || 'Não informado', qtd_ocorrencias: stats.qtd };
   });
   if (shouldSortInMemory) {
     rowsWithOccurrences = rowsWithOccurrences
       .sort((a, b) => {
-        const left = a[sortBy];
-        const right = b[sortBy];
+        const left = (a as Record<string, string | number | null | undefined>)[sortBy];
+        const right = (b as Record<string, string | number | null | undefined>)[sortBy];
         if (typeof left === 'number' && typeof right === 'number') {
           return sortOrder ? left - right : right - left;
         }
