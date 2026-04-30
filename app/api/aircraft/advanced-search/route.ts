@@ -97,21 +97,19 @@ export async function GET(request: NextRequest) {
     return next;
   };
 
+  const sortableInDb = new Set(['marcas', 'nm_fabricante', 'ds_modelo', 'nr_ano_fabricacao', 'sg_uf']);
+  const shouldSortInMemory = !sortableInDb.has(sortBy);
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
   let baseRows: RawAircraftRow[] = [];
   let count = 0;
-
-  if (modelos.length) {
-    let query = applyBaseFilters(supabase.from(detailsTable).select('*', { count: 'exact' }));
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-    query = query.order(sortBy, { ascending: sortOrder }).range(from, to);
-    const response = await query;
-    baseRows = (response.data as RawAircraftRow[] | null) ?? [];
-    count = response.count ?? 0;
+  if (shouldSortInMemory) {
+    const { data } = await applyBaseFilters(supabase.from(detailsTable).select('*').limit(10000));
+    baseRows = (data as RawAircraftRow[] | null) ?? [];
+    count = baseRows.length;
   } else {
     let query = applyBaseFilters(supabase.from(detailsTable).select('*', { count: 'exact' }));
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
     query = query.order(sortBy, { ascending: sortOrder }).range(from, to);
     const response = await query;
     baseRows = (response.data as RawAircraftRow[] | null) ?? [];
@@ -199,10 +197,24 @@ export async function GET(request: NextRequest) {
     return acc;
   }, {});
 
-  const rowsWithOccurrences = rows.map((row) => {
+  let rowsWithOccurrences = rows.map((row) => {
     const stats = incidentStatsByMarca[String(row.marcas ?? '')] ?? { qtd: 0, grave: '' };
     return { ...row, ds_gravame: stats.grave || 'Não informado', qtd_ocorrencias: stats.qtd };
   });
+  if (shouldSortInMemory) {
+    rowsWithOccurrences = rowsWithOccurrences
+      .sort((a, b) => {
+        const left = a[sortBy];
+        const right = b[sortBy];
+        if (typeof left === 'number' && typeof right === 'number') {
+          return sortOrder ? left - right : right - left;
+        }
+        return sortOrder
+          ? String(left ?? '').localeCompare(String(right ?? ''))
+          : String(right ?? '').localeCompare(String(left ?? ''));
+      })
+      .slice(from, to + 1);
+  }
 
   const acidentes = incidentRows.filter((row) => (row.classificacao ?? '').toUpperCase() === 'ACIDENTE').length;
   const incidentesGraves = incidentRows.filter((row) => (row.classificacao ?? '').toUpperCase() === 'INCIDENTE GRAVE').length;
