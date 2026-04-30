@@ -9,6 +9,7 @@ import AircraftPhotos from '@/components/AircraftPhotos';
 import AircraftRabDetails from '@/components/AircraftRabDetails';
 import AircraftSearch from '@/components/AircraftSearch';
 import AircraftTransactions from '@/components/AircraftTransactions';
+import AdvancedAircraftSearch from '@/components/AdvancedAircraftSearch';
 import { getSupabaseClient } from '@/lib/supabase';
 import type {
   AircraftConsolidatedSnapshot,
@@ -28,6 +29,7 @@ export default function HomePage() {
   const [isPhotosLoading, setIsPhotosLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [activeTab, setActiveTab] = useState<'consulta' | 'avancada'>('consulta');
   const searchRequestIdRef = useRef(0);
 
   const handleSearch = useCallback(async (term: string, mode: SearchMode) => {
@@ -166,13 +168,21 @@ export default function HomePage() {
       <h1 className="text-3xl font-bold tracking-tight text-slate-900">Dossiê de Aeronaves</h1>
       <p className="mt-3 text-sm text-slate-600">Consulte por matrícula, modelo ou fabricante.</p>
 
-      <div className="mt-8 w-full max-w-3xl">
-        <AircraftSearch isLoading={isLoading} onSearch={handleSearch} />
+
+      <div className="mt-8 flex w-full max-w-3xl gap-2">
+        <button className={`rounded-md px-4 py-2 text-sm font-medium ${activeTab === 'consulta' ? 'bg-sky-600 text-white' : 'bg-slate-200 text-slate-700'}`} onClick={() => setActiveTab('consulta')}>Consulta</button>
+        <button className={`rounded-md px-4 py-2 text-sm font-medium ${activeTab === 'avancada' ? 'bg-sky-600 text-white' : 'bg-slate-200 text-slate-700'}`} onClick={() => setActiveTab('avancada')}>Busca Avançada</button>
       </div>
+
+      {activeTab === 'consulta' && (<div className="mt-4 w-full max-w-3xl">
+        <AircraftSearch isLoading={isLoading} onSearch={handleSearch} />
+      </div>)}
 
       {errorMessage && <div className="mt-6 w-full rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700">{errorMessage}</div>}
 
-      {hasSearched && !errorMessage && (
+      {activeTab === 'avancada' && <AdvancedAircraftSearch />}
+
+      {activeTab === 'consulta' && hasSearched && !errorMessage && (
         <>
           <AircraftRabDetails snapshot={aircraftSnapshot} />
           <AircraftPhotos snapshot={photoSnapshot} isLoading={isPhotosLoading} />
