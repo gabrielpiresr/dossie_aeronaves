@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 
 type ComplexEntry = { nome: string; documento: string; percentual: string; estado: string };
 type RawAircraftRow = {
-  [key: string]: string | number | boolean | null | undefined;
+  [key: string]: string | number | boolean | null | ComplexEntry[] | undefined;
   marcas?: string | null;
   nm_fabricante?: string | null;
   ds_modelo?: string | null;
