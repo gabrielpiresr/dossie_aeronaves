@@ -138,6 +138,11 @@ export async function GET(request: NextRequest) {
   const detailsTable = process.env.NEXT_PUBLIC_AIRCRAFT_DETAILS_TABLE_NAME ?? 'detailed_aircrafts_info';
   const transactionsTable = process.env.NEXT_PUBLIC_AIRCRAFT_TRANSACTIONS_TABLE_NAME ?? 'history_transactions_cache';
   const incidentsTable = process.env.AIRCRAFT_INCIDENTS_TABLE_NAME ?? 'aircraft_incidents';
+  const debugEnabled = process.env.ADVANCED_SEARCH_DEBUG === '1';
+  const debugLog = (stage: string, payload: Record<string, unknown>) => {
+    if (!debugEnabled) return;
+    console.log('[advanced-search]', stage, payload);
+  };
 
   const applyBaseFilters = (q: any) => {
     let next = q;
@@ -207,10 +212,29 @@ export async function GET(request: NextRequest) {
 
   const rows = filteredRows.map((row) => ({ ...row, qtd_negociacoes: txMap[String(row.marcas ?? '')] ?? 0 }));
 
-  const { data: reportBaseRows } = await applyBaseFilters(
+  const reportBaseLowercase = await applyBaseFilters(
     supabase.from(detailsTable).select('marcas, nm_fabricante, ds_modelo, nr_ano_fabricacao, sg_uf').limit(10000),
   );
-  const reportRowsRaw = (reportBaseRows as RawAircraftRow[] | null) ?? [];
+  let reportRowsRaw = (reportBaseLowercase.data as RawAircraftRow[] | null) ?? [];
+
+  if (reportBaseLowercase.error) {
+    const reportBaseUppercase = await applyBaseFilters(
+      supabase.from(detailsTable).select('MARCAS, NM_FABRICANTE, DS_MODELO, NR_ANO_FABRICACAO, SG_UF').limit(10000),
+    );
+    reportRowsRaw = (reportBaseUppercase.data as RawAircraftRow[] | null) ?? [];
+    debugLog('report-base', {
+      strategy: 'fallback-uppercase',
+      lowercaseError: reportBaseLowercase.error?.message ?? null,
+      uppercaseError: reportBaseUppercase.error?.message ?? null,
+      totalRows: reportRowsRaw.length,
+    });
+  } else {
+    debugLog('report-base', {
+      strategy: 'lowercase',
+      totalRows: reportRowsRaw.length,
+      lowercaseError: null,
+    });
+  }
 
   const reportRows = reportRowsRaw.map((row) => ({
     marca: getFirstStringValue(row, ['marcas', 'MARCAS'], ''),
@@ -223,22 +247,35 @@ export async function GET(request: NextRequest) {
   const marcasReport = Array.from(new Set(reportRows.map((row) => row.marca).filter(Boolean).map((m) => m.trim())));
   let incidentRows: IncidentRow[] = [];
   if (marcasReport.length) {
-    const [lowercaseIncidents, uppercaseIncidents] = await Promise.all([
-      supabase
-        .from(incidentsTable)
-        .select('marca, classificacao, uf, tipo, ds_gravame')
-        .in('marca', marcasReport)
-        .limit(100000),
-      supabase
+    const lowercaseIncidents = await supabase
+      .from(incidentsTable)
+      .select('marca, classificacao, uf, tipo, ds_gravame')
+      .in('marca', marcasReport)
+      .limit(100000);
+
+    if (lowercaseIncidents.error) {
+      const uppercaseIncidents = await supabase
         .from(incidentsTable)
         .select('MARCA, CLASSIFICACAO, UF, TIPO, DS_GRAVAME')
         .in('MARCA', marcasReport)
-        .limit(100000),
-    ]);
-    incidentRows = [
-      ...((lowercaseIncidents.data as IncidentRow[] | null) ?? []),
-      ...((uppercaseIncidents.data as IncidentRow[] | null) ?? []),
-    ];
+        .limit(100000);
+      incidentRows = (uppercaseIncidents.data as IncidentRow[] | null) ?? [];
+      debugLog('incidents-query', {
+        strategy: 'fallback-uppercase',
+        marcasReport: marcasReport.length,
+        totalCount: incidentRows.length,
+        lowercaseError: lowercaseIncidents.error?.message ?? null,
+        uppercaseError: uppercaseIncidents.error?.message ?? null,
+      });
+    } else {
+      incidentRows = (lowercaseIncidents.data as IncidentRow[] | null) ?? [];
+      debugLog('incidents-query', {
+        strategy: 'lowercase',
+        marcasReport: marcasReport.length,
+        totalCount: incidentRows.length,
+        lowercaseError: null,
+      });
+    }
   }
 
   const countBy = <T,>(items: T[], getKey: (item: T) => string) => {
@@ -317,6 +354,18 @@ export async function GET(request: NextRequest) {
         .filter(Boolean),
     ),
   );
+
+  debugLog('response-summary', {
+    page,
+    pageSize,
+    total: count ?? 0,
+    rows: rowsWithOccurrences.length,
+    reportRows: reportRows.length,
+    totalOcorrencias: incidentRows.length,
+    acidentes,
+    incidentesGraves,
+    filtros: { fabricantes: fabricantes.length, modelos: modelos.length, estado, anoMin, anoMax },
+  });
 
   return NextResponse.json({
     rows: rowsWithOccurrences,
