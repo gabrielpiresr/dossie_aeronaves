@@ -55,6 +55,7 @@ export default function AircraftCurrentAircraftOccurrences({ snapshot }: Props) 
   return (
     <section className="mt-8 w-full rounded-md border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-900">Ocorrências da aeronave consultada</h2>
+      <p className="mt-1 text-sm text-slate-500">Ocorrencias somente a partir de 2016</p>
       <div
         className={`mt-3 rounded-md border px-3 py-2 text-sm font-semibold ${
           snapshot.aeronave_consultada_ocorrencias.possui_historico
