@@ -34,7 +34,17 @@ function parsePeople(raw: string | null): ComplexEntry[] {
     .map((chunk) => chunk.trim())
     .filter(Boolean)
     .map((chunk) => {
-      const [nome = '', documento = '', percentual = '', estado = ''] = chunk.split('|');
+      const [nome = '', documento = '', percentual = '', estado = ''] = chunk.split('|').map((part) => part.trim());
+
+      if (!estado && BR_UF_REGEX.test(percentual)) {
+        return { nome, documento, percentual: '', estado: percentual };
+      }
+
+      if (!estado && percentual && percentual.includes('|')) {
+        const [fixedPercentual = '', fixedEstado = ''] = percentual.split('|').map((part) => part.trim());
+        return { nome, documento, percentual: fixedPercentual, estado: fixedEstado };
+      }
+
       return { nome: nome.trim(), documento: documento.trim(), percentual: percentual.trim(), estado: estado.trim() };
     });
 }
@@ -61,8 +71,8 @@ export async function GET(request: NextRequest) {
   const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
   const params = request.nextUrl.searchParams;
-  const fabricantes = params.get('fabricantes')?.split(',').filter(Boolean) ?? [];
-  const modelos = params.get('modelos')?.split(',').filter(Boolean) ?? [];
+  const fabricantes = params.getAll('fabricantes').filter(Boolean);
+  const modelos = params.getAll('modelos').filter(Boolean);
   const estado = params.get('estado') ?? '';
   const anoMin = params.get('anoMin');
   const anoMax = params.get('anoMax');
