@@ -2,6 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 type ComplexEntry = { nome: string; documento: string; percentual: string; estado: string };
+type RawAircraftRow = Record<string, string | null> & {
+  marcas?: string | null;
+  nm_fabricante?: string | null;
+  ds_modelo?: string | null;
+  PROPRIETARIOS?: string | null;
+  OPERADORES?: string | null;
+};
+type NormalizedAircraftRow = Omit<RawAircraftRow, 'proprietarios' | 'operadores'> & {
+  modelo_normalizado: string;
+  proprietarios: ComplexEntry[];
+  operadores: ComplexEntry[];
+  [key: string]: string | null | ComplexEntry[] | undefined;
+};
 
 function normalizeModel(modelo: string, fabricante: string) {
   return modelo
@@ -55,9 +68,9 @@ export async function GET(request: NextRequest) {
   query = query.order(sortBy, { ascending: sortOrder }).range(from, to);
 
   const { data, count } = await query;
-  const baseRows = (data as Record<string, string | null>[] | null) ?? [];
+  const baseRows = (data as RawAircraftRow[] | null) ?? [];
 
-  const normalizedRows = baseRows.map((row) => {
+  const normalizedRows: NormalizedAircraftRow[] = baseRows.map((row) => {
     const fabricante = row.nm_fabricante ?? '';
     const modelo = row.ds_modelo ?? '';
     return {
@@ -68,7 +81,9 @@ export async function GET(request: NextRequest) {
     };
   });
 
-  const filteredRows = modelos.length ? normalizedRows.filter((row) => modelos.includes(String(row.modelo_normalizado ?? ''))) : normalizedRows;
+  const filteredRows: NormalizedAircraftRow[] = modelos.length
+    ? normalizedRows.filter((row) => modelos.includes(String(row.modelo_normalizado ?? '')))
+    : normalizedRows;
 
   const marcas = filteredRows.map((row) => row.marcas).filter(Boolean);
   const { data: txData } = await supabase.from(transactionsTable).select('marca').in('marca', marcas as string[]);
