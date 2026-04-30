@@ -2,18 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
 type ComplexEntry = { nome: string; documento: string; percentual: string; estado: string };
-type RawAircraftRow = Record<string, string | null> & {
+type RawAircraftRow = {
+  [key: string]: string | number | boolean | null | undefined;
   marcas?: string | null;
   nm_fabricante?: string | null;
   ds_modelo?: string | null;
   PROPRIETARIOS?: string | null;
   OPERADORES?: string | null;
 };
-type NormalizedAircraftRow = Omit<RawAircraftRow, 'proprietarios' | 'operadores'> & {
+type NormalizedAircraftRow = RawAircraftRow & {
   modelo_normalizado: string;
   proprietarios: ComplexEntry[];
   operadores: ComplexEntry[];
-  [key: string]: string | null | ComplexEntry[] | undefined;
+  [key: string]: string | number | boolean | null | ComplexEntry[] | undefined;
 };
 
 function normalizeModel(modelo: string, fabricante: string) {
