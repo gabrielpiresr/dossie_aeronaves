@@ -11,6 +11,11 @@ type RawAircraftRow = {
   operadores?: string | null;
   PROPRIETARIOS?: string | null;
   OPERADORES?: string | null;
+  MARCAS?: string | null;
+  NM_FABRICANTE?: string | null;
+  DS_MODELO?: string | null;
+  NR_ANO_FABRICACAO?: string | number | null;
+  SG_UF?: string | null;
 };
 type IncidentRow = {
   marca?: string | null;
@@ -77,6 +82,17 @@ function getRawPeopleValue(row: RawAircraftRow, field: 'proprietarios' | 'operad
   const upper = field.toUpperCase();
   const value = row[field] ?? row[upper];
   return typeof value === 'string' ? value : null;
+}
+
+function getFirstStringValue(row: RawAircraftRow, keys: string[], fallback = 'Não informado') {
+  for (const key of keys) {
+    const raw = row[key];
+    if (raw === null || raw === undefined) continue;
+    const normalized = String(raw).trim();
+    if (normalized) return normalized;
+  }
+
+  return fallback;
 }
 
 export async function GET(request: NextRequest) {
@@ -165,11 +181,11 @@ export async function GET(request: NextRequest) {
   const reportRowsRaw = (reportBaseRows as RawAircraftRow[] | null) ?? [];
 
   const reportRows = reportRowsRaw.map((row) => ({
-    marca: String(row.marcas ?? ''),
-    fabricante: String(row.nm_fabricante ?? 'Não informado'),
-    modelo: String(row.ds_modelo ?? 'Não informado'),
-    ano: String(row.nr_ano_fabricacao ?? 'Não informado'),
-    uf: String(row.sg_uf ?? 'Não informado'),
+    marca: getFirstStringValue(row, ['marcas', 'MARCAS'], ''),
+    fabricante: getFirstStringValue(row, ['nm_fabricante', 'NM_FABRICANTE']),
+    modelo: getFirstStringValue(row, ['ds_modelo', 'DS_MODELO']),
+    ano: getFirstStringValue(row, ['nr_ano_fabricacao', 'NR_ANO_FABRICACAO']),
+    uf: getFirstStringValue(row, ['sg_uf', 'SG_UF']),
   }));
 
   const marcasReport = Array.from(new Set(reportRows.map((row) => row.marca).filter(Boolean)));
