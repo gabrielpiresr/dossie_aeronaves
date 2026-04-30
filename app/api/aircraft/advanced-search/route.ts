@@ -7,6 +7,8 @@ type RawAircraftRow = {
   marcas?: string | null;
   nm_fabricante?: string | null;
   ds_modelo?: string | null;
+  proprietarios?: string | null;
+  operadores?: string | null;
   PROPRIETARIOS?: string | null;
   OPERADORES?: string | null;
 };
@@ -71,6 +73,12 @@ function mapPeopleToColumns(raw: string | null) {
 
 const BR_UF_REGEX = /^[A-Z]{2}$/;
 
+function getRawPeopleValue(row: RawAircraftRow, field: 'proprietarios' | 'operadores') {
+  const upper = field.toUpperCase();
+  const value = row[field] ?? row[upper];
+  return typeof value === 'string' ? value : null;
+}
+
 export async function GET(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -122,8 +130,8 @@ export async function GET(request: NextRequest) {
   }
 
   const normalizedRows: NormalizedAircraftRow[] = baseRows.map((row) => {
-    const proprietario = mapPeopleToColumns(row.PROPRIETARIOS ?? null);
-    const operador = mapPeopleToColumns(row.OPERADORES ?? null);
+    const proprietario = mapPeopleToColumns(getRawPeopleValue(row, 'proprietarios'));
+    const operador = mapPeopleToColumns(getRawPeopleValue(row, 'operadores'));
 
     return {
       ...row,
