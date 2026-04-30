@@ -11,20 +11,15 @@ type RawAircraftRow = {
   OPERADORES?: string | null;
 };
 type NormalizedAircraftRow = RawAircraftRow & {
-  modelo_normalizado: string;
-  proprietarios: ComplexEntry[];
-  operadores: ComplexEntry[];
-  [key: string]: string | number | boolean | null | ComplexEntry[] | undefined;
+  proprietario_nome: string;
+  proprietario_documento: string;
+  proprietario_percentual_cota: string;
+  proprietario_estado: string;
+  operador_nome: string;
+  operador_documento: string;
+  operador_percentual_cota: string;
+  operador_estado: string;
 };
-
-function normalizeModel(modelo: string, fabricante: string) {
-  return modelo
-    .toUpperCase()
-    .replace(new RegExp(fabricante.toUpperCase(), 'g'), '')
-    .replace(/\b(LSA|NG)\b/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 function parsePeople(raw: string | null): ComplexEntry[] {
   if (!raw) return [];
@@ -37,6 +32,21 @@ function parsePeople(raw: string | null): ComplexEntry[] {
       return { nome: nome.trim(), documento: documento.trim(), percentual: percentual.trim(), estado: estado.trim() };
     });
 }
+
+function mapPeopleToColumns(raw: string | null) {
+  const [first] = parsePeople(raw);
+  if (!first) {
+    return { nome: '', documento: '', percentual: '', estado: '' };
+  }
+
+  if (!first.estado && first.percentual && BR_UF_REGEX.test(first.percentual)) {
+    return { nome: first.nome, documento: first.documento, percentual: '', estado: first.percentual };
+  }
+
+  return first;
+}
+
+const BR_UF_REGEX = /^[A-Z]{2}$/;
 
 export async function GET(request: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -86,18 +96,24 @@ export async function GET(request: NextRequest) {
   }
 
   const normalizedRows: NormalizedAircraftRow[] = baseRows.map((row) => {
-    const fabricante = row.nm_fabricante ?? '';
-    const modelo = row.ds_modelo ?? '';
+    const proprietario = mapPeopleToColumns(row.PROPRIETARIOS ?? null);
+    const operador = mapPeopleToColumns(row.OPERADORES ?? null);
+
     return {
       ...row,
-      modelo_normalizado: normalizeModel(modelo, fabricante),
-      proprietarios: parsePeople(row.PROPRIETARIOS ?? null),
-      operadores: parsePeople(row.OPERADORES ?? null),
+      proprietario_nome: proprietario.nome,
+      proprietario_documento: proprietario.documento,
+      proprietario_percentual_cota: proprietario.percentual,
+      proprietario_estado: proprietario.estado,
+      operador_nome: operador.nome,
+      operador_documento: operador.documento,
+      operador_percentual_cota: operador.percentual,
+      operador_estado: operador.estado,
     };
   });
 
   let filteredRows: NormalizedAircraftRow[] = modelos.length
-    ? normalizedRows.filter((row) => modelos.includes(String(row.modelo_normalizado ?? '')))
+    ? normalizedRows.filter((row) => modelos.includes(String(row.ds_modelo ?? '')))
     : normalizedRows;
   if (modelos.length) {
     filteredRows = filteredRows.sort((a, b) => {
@@ -127,7 +143,7 @@ export async function GET(request: NextRequest) {
   const modelosDisponiveis = Array.from(
     new Set(
       ((modelosBase as Array<{ ds_modelo: string | null; nm_fabricante: string | null }> | null) ?? [])
-        .map((row) => normalizeModel(row.ds_modelo ?? '', row.nm_fabricante ?? ''))
+        .map((row) => row.ds_modelo ?? '')
         .filter(Boolean),
     ),
   );
